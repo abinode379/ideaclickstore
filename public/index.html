@@ -3,33 +3,33 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>IdeaClick Admin</title>
+    <title>IdeaClick Store Admin</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/public/styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
     <div class="sidebar-overlay"></div>
     
     <nav class="sidebar">
         <div class="sidebar-header">
-            <span class="shield-icon">🛡️</span>
-            <h2>IdeaClick</h2>
+            <h2>IdeaClick Store Admin</h2>
         </div>
         <ul class="sidebar-menu">
             <li class="sidebar-item active" data-target="tab-dashboard">
-                <span>📊</span> Dashboard
+                Dashboard
             </li>
             <li class="sidebar-item" data-target="tab-products">
-                <span>📦</span> Products
+                Products
             </li>
             <li class="sidebar-item" data-target="tab-users">
-                <span>👥</span> Users
+                Users
             </li>
             <li class="sidebar-item" data-target="tab-logs">
-                <span>📋</span> Logs
+                Logs
             </li>
             <li class="sidebar-item logout-item">
-                <a href="/logout"><span>🚪</span> Logout</a>
+                <a href="/logout">Logout</a>
             </li>
         </ul>
     </nav>
@@ -41,7 +41,10 @@
                 <span></span>
                 <span></span>
             </button>
-            <div class="header-title">IdeaClick Admin</div>
+            <div class="header-title">IdeaClick Store Admin</div>
+            <div class="admin-info" id="header-admin-info" style="margin-left: auto; margin-right: 1.5rem; display: flex; align-items: center; gap: 8px; font-size: 0.875rem;">
+                <span class="admin-name" id="admin-username" style="font-weight: 500;">Admin</span>
+            </div>
             <div class="status-indicator">
                 <div class="status-dot pulse"></div>
                 <span class="status-text">System Online</span>
@@ -65,6 +68,29 @@
                         <h3>Total Products</h3>
                         <div class="stat-value" id="stat-products">-</div>
                     </div>
+                    <div class="stat-card glass-card">
+                        <h3>Total Sales (NPR)</h3>
+                        <div class="stat-value" id="stat-sales">-</div>
+                    </div>
+                    <div class="stat-card glass-card">
+                        <h3>Total Deposits (NPR)</h3>
+                        <div class="stat-value" id="stat-deposits">-</div>
+                    </div>
+                </div>
+
+                <div class="analytics-row mt-4" style="display: grid; grid-template-columns: 2fr 1fr; gap: 1.5rem; flex-wrap: wrap;">
+                    <div class="analytics-card glass-card" style="padding: 1.5rem; min-height: 350px;">
+                        <h3>Sales & Deposits (Last 7 Days)</h3>
+                        <div class="chart-container" style="position: relative; height: 280px; width: 100%; margin-top: 1rem;">
+                            <canvas id="salesChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="analytics-card glass-card" style="padding: 1.5rem;">
+                        <h3>Top Products</h3>
+                        <div id="popular-products-list" style="margin-top: 1.5rem; display: flex; flex-direction: column; gap: 12px;">
+                            <!-- Populated by JS -->
+                        </div>
+                    </div>
                 </div>
 
                 <div class="settings-section glass-card mt-4">
@@ -76,6 +102,10 @@
                     <div class="form-group mt-3">
                         <label for="setting-channel">Notification Channel ID</label>
                         <input type="text" id="setting-channel" class="input-field">
+                    </div>
+                    <div class="form-group mt-3">
+                        <label for="setting-live-sales">Live Sales Channel ID (Fake purchase alerts)</label>
+                        <input type="text" id="setting-live-sales" class="input-field">
                     </div>
                     <button class="btn-primary mt-3" id="save-settings-btn">Save Settings</button>
                 </div>
@@ -94,7 +124,7 @@
                 <h2 class="section-title">Users Directory</h2>
                 <div class="search-container mt-4 mb-4">
                     <div class="search-bar">
-                        <span class="search-icon">🔍</span>
+                        <span class="search-icon" style="top: 13px; display: flex; align-items: center;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display: inline-block; vertical-align: middle;"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg></span>
                         <input type="text" id="user-search" class="input-field" placeholder="Search by Discord ID or Username...">
                     </div>
                 </div>

@@ -2,15 +2,38 @@ require('dotenv').config();
 const express = require('express');
 const session = require('express-session');
 const axios = require('axios');
-const fs = require('fs');
 const path = require('path');
+const db = require('./db');
+const log = require('./logger').child({ service: 'admin' });
 
 const app = express();
+
+const CLIENT_ID = process.env.CLIENT_ID;
+const CLIENT_SECRET = process.env.OAUTH2_CLIENT_SECRET;
+const ADMIN_URL = process.env.ADMIN_URL || 'http://localhost:3001';
+const REDIRECT_URI = `${ADMIN_URL}/auth/callback`;
+const ADMIN_IDS = (process.env.ADMIN_DISCORD_IDS || '').split(',').map(id => id.trim()).filter(Boolean);
+const USE_OAUTH2 = !!(CLIENT_ID && CLIENT_SECRET && ADMIN_IDS.length > 0);
+
+async function sendStaffLog(embed) {
+    try {
+        const channelId = db.getConfig('staff_log_channel_id') || process.env.STAFF_LOG_CHANNEL_ID;
+        if (!channelId || !process.env.DISCORD_TOKEN) return;
+        await axios.post(
+            `https://discord.com/api/v10/channels/${channelId}/messages`,
+            { embeds: [embed] },
+            { headers: { Authorization: `Bot ${process.env.DISCORD_TOKEN}` } }
+        ).catch(() => {});
+    } catch (e) {
+        log.error({ err: e.message }, 'Failed to post staff log');
+    }
+}
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(session({
-    secret: process.env.ADMIN_SESSION_SECRET || 'change_this_secret_key_' + Date.now(),
+    store: new db.SQLiteSessionStore(),
+    secret: process.env.ADMIN_SESSION_SECRET || 'fallback_secret',
     resave: false,
     saveUninitialized: false,
     cookie: { maxAge: 2 * 60 * 60 * 1000 } // 2 hours
@@ -19,72 +42,78 @@ app.use(session({
 app.use('/public', express.static(path.join(__dirname, 'public')));
 
 function ensureAuth(req, res, next) {
-    if (req.session.isAdmin) return next();
+    if (req.session.admin) return next();
     res.redirect('/login');
 }
 
 function ensureAuthAPI(req, res, next) {
-    if (req.session.isAdmin) return next();
+    if (req.session.admin) return next();
     res.status(401).json({ error: 'Unauthorized' });
 }
 
-const configPath = path.join(__dirname, 'config.json');
-const usersPath = path.join(__dirname, 'users.json');
-const logsPath = path.join(__dirname, 'admin_logs.json');
-
-function readConfig() {
-    try {
-        return JSON.parse(fs.readFileSync(configPath, 'utf8'));
-    } catch (e) {
-        return {};
-    }
-}
-
-function writeConfig(data) {
-    fs.writeFileSync(configPath, JSON.stringify(data, null, 2), 'utf8');
-}
-
-function readUsers() {
-    try {
-        return JSON.parse(fs.readFileSync(usersPath, 'utf8'));
-    } catch (e) {
-        return {};
-    }
-}
-
-function writeUsers(data) {
-    fs.writeFileSync(usersPath, JSON.stringify(data, null, 2), 'utf8');
-}
-
-function readLogs() {
-    try {
-        return JSON.parse(fs.readFileSync(logsPath, 'utf8'));
-    } catch (e) {
-        return [];
-    }
-}
-
-function appendLog(entry) {
-    let logs = readLogs();
-    entry.timestamp = new Date().toISOString();
-    logs.push(entry);
-    if (logs.length > 500) {
-        logs = logs.slice(logs.length - 500);
-    }
-    fs.writeFileSync(logsPath, JSON.stringify(logs, null, 2), 'utf8');
-}
-
-// Routes
 app.get('/login', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'login.html'));
 });
 
-app.post('/login', (req, res) => {
+app.get('/auth/discord', (req, res) => {
+    const url = `https://discord.com/api/oauth2/authorize?client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=code&scope=identify`;
+    res.redirect(url);
+});
+
+app.get('/auth/callback', async (req, res) => {
+    const code = req.query.code;
+    if (!code) return res.redirect('/login');
+
+    try {
+        const params = new URLSearchParams();
+        params.append('client_id', CLIENT_ID);
+        params.append('client_secret', CLIENT_SECRET);
+        params.append('grant_type', 'authorization_code');
+        params.append('code', code);
+        params.append('redirect_uri', REDIRECT_URI);
+
+        const tokenRes = await axios.post('https://discord.com/api/oauth2/token', params.toString(), {
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded'
+            }
+        });
+
+        const accessToken = tokenRes.data.access_token;
+
+        const userRes = await axios.get('https://discord.com/api/users/@me', {
+            headers: {
+                Authorization: `Bearer ${accessToken}`
+            }
+        });
+
+        const user = userRes.data;
+
+        if (!ADMIN_IDS.includes(user.id)) {
+            log.warn({ id: user.id, username: user.username }, 'Unauthorized Discord login attempt');
+            return res.redirect('/login?error=denied');
+        }
+
+        req.session.admin = {
+            id: user.id,
+            username: user.username,
+            discriminator: user.discriminator,
+            avatar: user.avatar
+        };
+
+        log.info({ id: user.id, username: user.username }, 'Admin logged in via Discord');
+        res.redirect('/dashboard');
+    } catch (error) {
+        log.error({ error: error.message }, 'Discord OAuth2 error');
+        res.redirect('/login?error=failed');
+    }
+});
+
+app.post('/auth/password', (req, res) => {
     if (req.body.password === process.env.ADMIN_PASSWORD) {
-        req.session.isAdmin = true;
+        req.session.admin = { id: 'local', username: 'Admin' };
         res.redirect('/dashboard');
     } else {
-        res.redirect('/login?error=1');
+        res.redirect('/login?error=password');
     }
 });
 
@@ -97,180 +126,255 @@ app.get('/dashboard', ensureAuth, (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
+// API Routes
+app.get('/api/me', ensureAuthAPI, (req, res) => {
+    res.json(req.session.admin);
+});
+
 app.get('/api/settings', ensureAuthAPI, (req, res) => {
-    const config = readConfig();
     res.json({
-        usdt_to_npr_rate: config.usdt_to_npr_rate,
-        notification_channel_id: config.notification_channel_id
+        usdt_to_npr_rate: db.getConfig('usdt_to_npr_rate'),
+        notification_channel_id: db.getConfig('notification_channel_id'),
+        live_sales_channel_id: db.getConfig('live_sales_channel_id')
     });
 });
 
 app.post('/api/settings', ensureAuthAPI, (req, res) => {
-    const config = readConfig();
-    const updates = {};
-    if (req.body.usdt_to_npr_rate !== undefined) {
-        config.usdt_to_npr_rate = Number(req.body.usdt_to_npr_rate);
-        updates.usdt_to_npr_rate = config.usdt_to_npr_rate;
-    }
-    if (req.body.notification_channel_id !== undefined) {
-        config.notification_channel_id = req.body.notification_channel_id;
-        updates.notification_channel_id = config.notification_channel_id;
-    }
-    writeConfig(config);
-    appendLog({
-        action: 'settings_update',
-        details: updates
+    const { usdt_to_npr_rate, notification_channel_id, live_sales_channel_id } = req.body;
+    if (usdt_to_npr_rate !== undefined) db.setConfig('usdt_to_npr_rate', usdt_to_npr_rate);
+    if (notification_channel_id !== undefined) db.setConfig('notification_channel_id', notification_channel_id);
+    if (live_sales_channel_id !== undefined) db.setConfig('live_sales_channel_id', live_sales_channel_id);
+    
+    db.appendLog({ action: 'settings_update', details: req.body });
+    
+    sendStaffLog({
+        title: '⚙️ Settings Updated',
+        color: 0x9b59b6,
+        fields: [
+            { name: 'Admin User', value: req.session?.admin?.username || 'System', inline: true },
+            { name: 'Exchange Rate', value: usdt_to_npr_rate ? `\` ${usdt_to_npr_rate} NPR \`` : 'N/A', inline: true },
+            { name: 'Notification Channel', value: notification_channel_id ? `\` ${notification_channel_id} \`` : 'N/A', inline: true },
+            { name: 'Live Sales Channel', value: live_sales_channel_id ? `\` ${live_sales_channel_id} \`` : 'N/A', inline: true }
+        ],
+        timestamp: new Date().toISOString()
     });
+    
     res.json({ success: true });
 });
 
 app.get('/api/products', ensureAuthAPI, async (req, res) => {
     try {
-        const response = await axios.get('https://tunvnmmo.duckdns.org/api/products', {
+        const prodRes = await axios.get('https://tunvnmmo.duckdns.org/api/products', {
             headers: { 'X-API-Key': process.env.TUNVNMMO_API_KEY }
         });
+        
         let products = [];
-        if (Array.isArray(response.data.products)) {
-            products = response.data.products;
-        } else if (Array.isArray(response.data)) {
-            products = response.data;
+        if (Array.isArray(prodRes.data)) {
+            products = prodRes.data;
+        } else if (prodRes.data && Array.isArray(prodRes.data.products)) {
+            products = prodRes.data.products;
+        } else if (prodRes.data && Array.isArray(prodRes.data.data)) {
+            products = prodRes.data.data;
         }
+
+        const customProducts = db.getConfig('custom_products') || {};
+        const hiddenProducts = db.getConfig('hidden_products') || [];
+        const productOrder = db.getConfig('product_order') || [];
         
-        const config = readConfig();
-        const customProducts = config.custom_products || {};
-        const hiddenProducts = config.hidden_products || [];
-        
-        const enrichedProducts = products.map(p => {
-            const pid = String(p.id);
+        let enriched = products.map(p => {
             return {
                 ...p,
-                custom: customProducts[pid] || {},
-                hidden: hiddenProducts.includes(pid)
+                custom: customProducts[String(p.id)] || {},
+                hidden: hiddenProducts.includes(String(p.id))
             };
         });
         
-        res.json(enrichedProducts);
-    } catch (error) {
-        res.status(500).json({ error: error.message });
+        if (productOrder.length > 0) {
+            enriched.sort((a, b) => {
+                const idxA = productOrder.indexOf(String(a.id));
+                const idxB = productOrder.indexOf(String(b.id));
+                if (idxA === -1 && idxB === -1) return 0;
+                if (idxA === -1) return 1;
+                if (idxB === -1) return -1;
+                return idxA - idxB;
+            });
+        }
+        
+        res.json(enriched);
+    } catch (err) {
+        log.error({ error: err.message, stack: err.stack }, 'Failed to fetch products from TunvnMMO API');
+        res.status(500).json({ error: 'Failed to fetch products' });
     }
 });
 
-app.post('/api/product', ensureAuthAPI, (req, res) => {
-    const config = readConfig();
-    const { product_id, name, description, price, hidden } = req.body;
-    const pidStr = String(product_id);
+app.post('/api/products/order', ensureAuthAPI, (req, res) => {
+    const { order } = req.body; // Array of product IDs
+    if (!Array.isArray(order)) return res.status(400).json({ error: 'Missing order array' });
+    db.setConfig('product_order', order);
+    db.appendLog({ action: 'product_reorder', order });
     
-    if (!config.custom_products) config.custom_products = {};
-    if (!config.hidden_products) config.hidden_products = [];
-    
-    const changes = {};
-    
-    // Handle custom product data
-    if (!config.custom_products[pidStr]) config.custom_products[pidStr] = {};
-    
-    if (name) {
-        config.custom_products[pidStr].name = name;
-    } else {
-        delete config.custom_products[pidStr].name;
-    }
-    
-    if (description) {
-        config.custom_products[pidStr].description = description;
-    } else {
-        delete config.custom_products[pidStr].description;
-    }
-    
-    if (price) {
-        config.custom_products[pidStr].price = Number(price);
-    } else {
-        delete config.custom_products[pidStr].price;
-    }
-    
-    changes.custom = { ...config.custom_products[pidStr] };
-    
-    // Clean up empty custom entries
-    if (Object.keys(config.custom_products[pidStr]).length === 0) {
-        delete config.custom_products[pidStr];
-        changes.custom = 'cleared';
-    }
-    
-    // Handle hidden products array
-    const isHidden = hidden === true || hidden === 'true';
-    if (isHidden && !config.hidden_products.includes(pidStr)) {
-        config.hidden_products.push(pidStr);
-        changes.hidden = true;
-    } else if (!isHidden) {
-        config.hidden_products = config.hidden_products.filter(pId => pId !== pidStr);
-        changes.hidden = false;
-    }
-    
-    writeConfig(config);
-    appendLog({
-        action: 'product_update',
-        product_id: pidStr,
-        changes
+    sendStaffLog({
+        title: '📦 Products Reordered',
+        color: 0x9b59b6,
+        fields: [
+            { name: 'Admin User', value: req.session?.admin?.username || 'System', inline: true },
+            { name: 'Total Products Sorted', value: String(order.length), inline: true }
+        ],
+        timestamp: new Date().toISOString()
     });
     
     res.json({ success: true });
 });
 
-app.get('/api/users', ensureAuthAPI, (req, res) => {
-    const users = readUsers();
-    const usersArray = Object.keys(users).map(id => {
-        return {
-            id,
-            balance_npr: users[id].balance_npr,
-            loyalty_points: users[id].loyalty_points,
-            username: users[id].username,
-            purchase_history: users[id].purchase_history,
-            last_daily_claim: users[id].last_daily_claim
+app.post('/api/product', ensureAuthAPI, (req, res) => {
+    const { product_id, name, description, price, hidden } = req.body;
+    if (!product_id) return res.status(400).json({ error: 'Missing product_id' });
+    
+    let customProducts = db.getConfig('custom_products') || {};
+    let hiddenProducts = db.getConfig('hidden_products') || [];
+    
+    if (name || description || price) {
+        customProducts[String(product_id)] = {
+            name: name || undefined,
+            description: description || undefined,
+            price: price || undefined
         };
-    });
-    res.json(usersArray);
+    } else {
+        delete customProducts[String(product_id)];
+    }
+    
+    if (hidden) {
+        if (!hiddenProducts.includes(String(product_id))) {
+            hiddenProducts.push(String(product_id));
+        }
+    } else {
+        hiddenProducts = hiddenProducts.filter(id => id !== String(product_id));
+    }
+    
+    db.setConfig('custom_products', customProducts);
+    db.setConfig('hidden_products', hiddenProducts);
+    
+    db.appendLog({ action: 'product_update', product_id, changes: { custom: customProducts[String(product_id)], hidden } });
+    res.json({ success: true });
+});
+
+app.get('/api/users', ensureAuthAPI, (req, res) => {
+    res.json(db.getAllUsers());
 });
 
 app.post('/api/users/:id/balance', ensureAuthAPI, (req, res) => {
-    const userId = req.params.id;
     const { amount, reason } = req.body;
-    
-    const users = readUsers();
-    if (!users[userId]) {
-        return res.status(404).json({ error: 'User not found' });
+    const id = req.params.id;
+    try {
+        const user = db.getUser(id);
+        const username = user ? user.username : id;
+        const newBalance = db.adjustBalance(id, Number(amount));
+        db.appendLog({
+            action: 'balance_adjust',
+            targetUser: id,
+            username,
+            amount: Number(amount),
+            reason,
+            newBalance
+        });
+        
+        sendStaffLog({
+            title: '💰 Balance Adjusted via Admin Panel',
+            color: 0xe67e22,
+            fields: [
+                { name: 'Admin User', value: req.session?.admin?.username || 'System', inline: true },
+                { name: 'Target User', value: `${username} (\`${id}\`)`, inline: true },
+                { name: 'Amount', value: `\` ${Number(amount) >= 0 ? '+' : ''}${amount} NPR \``, inline: true },
+                { name: 'New Balance', value: `\` ${newBalance} NPR \``, inline: true },
+                { name: 'Reason', value: reason || 'No reason specified', inline: false }
+            ],
+            timestamp: new Date().toISOString()
+        });
+        
+        res.json({ success: true, newBalance });
+    } catch (err) {
+        res.status(400).json({ error: err.message });
     }
-    
-    const numAmount = Number(amount);
-    if (isNaN(numAmount)) {
-        return res.status(400).json({ error: 'Invalid amount' });
-    }
-    
-    if (!users[userId].balance_npr) users[userId].balance_npr = 0;
-    
-    const newBalance = users[userId].balance_npr + numAmount;
-    if (newBalance < 0) {
-        return res.status(400).json({ error: 'Balance cannot go below 0' });
-    }
-    
-    users[userId].balance_npr = newBalance;
-    writeUsers(users);
-    
-    appendLog({
-        action: 'balance_adjust',
-        targetUser_id: userId,
-        username: users[userId].username,
-        amount: numAmount,
-        reason: reason || '',
-        newBalance: newBalance
-    });
-    
-    res.json({ success: true, newBalance });
 });
 
+app.get('/api/analytics', ensureAuthAPI, (req, res) => {
+    try {
+        const fs = require('fs');
+        const users = JSON.parse(fs.readFileSync(path.join(__dirname, 'users.json'), 'utf8') || '{}');
+        
+        let totalSales = 0;
+        let totalDeposits = 0;
+        const productCounts = {};
+        const dailySales = {};
+        
+        for (const [userId, user] of Object.entries(users)) {
+            const history = user.purchase_history || [];
+            for (const item of history) {
+                const price = Number(item.price || 0);
+                totalSales += price;
+                
+                const name = item.product || 'Unknown';
+                productCounts[name] = (productCounts[name] || 0) + (item.quantity || 1);
+                
+                if (item.date) {
+                    const dateStr = item.date.split('T')[0];
+                    dailySales[dateStr] = (dailySales[dateStr] || 0) + price;
+                }
+            }
+        }
+        
+        const logs = db.getLogs('balance_adjust', 500);
+        const dailyDeposits = {};
+        for (const logItem of logs) {
+            const details = logItem.details || {};
+            const amount = Number(details.amount || 0);
+            if (amount > 0) {
+                totalDeposits += amount;
+                if (logItem.timestamp) {
+                    const dateStr = logItem.timestamp.split('T')[0];
+                    dailyDeposits[dateStr] = (dailyDeposits[dateStr] || 0) + amount;
+                }
+            }
+        }
+        
+        const labels = [];
+        const salesData = [];
+        const depositsData = [];
+        
+        for (let i = 6; i >= 0; i--) {
+            const d = new Date();
+            d.setDate(d.getDate() - i);
+            const dateStr = d.toISOString().split('T')[0];
+            labels.push(d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
+            salesData.push(dailySales[dateStr] || 0);
+            depositsData.push(dailyDeposits[dateStr] || 0);
+        }
+        
+        const popularProducts = Object.entries(productCounts)
+            .map(([name, qty]) => ({ name, qty }))
+            .sort((a, b) => b.qty - a.qty)
+            .slice(0, 5);
+            
+        res.json({
+            totalSales,
+            totalDeposits,
+            charts: {
+                labels,
+                sales: salesData,
+                deposits: depositsData
+            },
+            popularProducts
+        });
+    } catch (err) {
+        log.error({ error: err.message, stack: err.stack }, 'Failed to generate analytics');
+        res.status(500).json({ error: 'Failed to generate analytics' });
+    }
+});
+
+
 app.get('/api/logs', ensureAuthAPI, (req, res) => {
-    const logs = readLogs();
-    res.json(logs.reverse());
+    res.json(db.getLogs(req.query.filter || null, 200));
 });
 
 const PORT = process.env.ADMIN_PORT || 3001;
-app.listen(PORT, () => {
-    console.log(`🛡️ Admin panel running on http://localhost:${PORT}`);
-});
+app.listen(PORT, () => log.info({ port: PORT }, 'Admin panel running'));

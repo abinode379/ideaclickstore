@@ -1,10 +1,12 @@
 require('dotenv').config();
 const { 
     Client, GatewayIntentBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, 
-    EmbedBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, MessageFlags 
+    EmbedBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, MessageFlags,
+    StringSelectMenuBuilder, StringSelectMenuOptionBuilder
 } = require('discord.js');
 const axios = require('axios');
-const fs = require('fs');
+const db = require('./db');
+const log = require('./logger').child({ service: 'bot' });
 
 const client = new Client({
     intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent]
@@ -25,12 +27,46 @@ const paybridgeAPI = axios.create({
 
 const ephemeral = { flags: [MessageFlags.Ephemeral] };
 
-let config = JSON.parse(fs.readFileSync('config.json', 'utf8'));
-let users = {};
-try { users = JSON.parse(fs.readFileSync('users.json', 'utf8')); } catch (e) { users = {}; }
+const SHOP_PAGE_SIZE = 6;
+const HISTORY_PAGE_SIZE = 5;
 
-function saveUsers() { fs.writeFileSync('users.json', JSON.stringify(users, null, 2)); }
-function saveConfig() { fs.writeFileSync('config.json', JSON.stringify(config, null, 2)); }
+async function sendStaffLog(embed) {
+    try {
+        const channelId = db.getConfig('staff_log_channel_id') || process.env.STAFF_LOG_CHANNEL_ID;
+        if (!channelId) return;
+        const channel = client.channels.cache.get(channelId);
+        if (channel) {
+            await channel.send({ embeds: [embed] });
+        }
+    } catch (e) {
+        log.error({ err: e.message }, 'Failed to send staff log');
+    }
+}
+
+async function runDailyBackup() {
+    try {
+        const fs = require('fs');
+        const channelId = db.getConfig('backup_channel_id') || process.env.BACKUP_CHANNEL_ID;
+        if (!channelId) return;
+        const channel = client.channels.cache.get(channelId);
+        if (!channel) return;
+        
+        const files = [];
+        if (fs.existsSync('users.json')) files.push({ attachment: 'users.json', name: `users_${Date.now()}.json` });
+        if (fs.existsSync('config.json')) files.push({ attachment: 'config.json', name: `config_${Date.now()}.json` });
+        if (fs.existsSync('sessions.json')) files.push({ attachment: 'sessions.json', name: `sessions_${Date.now()}.json` });
+        
+        if (files.length > 0) {
+            await channel.send({
+                content: `📅 **Daily Database Backup** - ${new Date().toLocaleString()}`,
+                files: files
+            });
+            log.info('Daily database backup uploaded successfully');
+        }
+    } catch (e) {
+        log.error({ err: e.message }, 'Failed to run daily database backup');
+    }
+}
 
 function extractArray(data) {
     if (Array.isArray(data)) return data;
@@ -42,12 +78,28 @@ function extractArray(data) {
     return [];
 }
 
+function sortProducts(products) {
+    const productOrder = db.getConfig('product_order') || [];
+    if (productOrder.length > 0) {
+        products.sort((a, b) => {
+            const idxA = productOrder.indexOf(String(a.id));
+            const idxB = productOrder.indexOf(String(b.id));
+            if (idxA === -1 && idxB === -1) return 0;
+            if (idxA === -1) return 1;
+            if (idxB === -1) return -1;
+            return idxA - idxB;
+        });
+    }
+    return products;
+}
+
 function getProductData(product) {
-    const custom = config.custom_products && config.custom_products[product.id] ? config.custom_products[product.id] : {};
+    const customProducts = db.getConfig('custom_products') || {};
+    const custom = customProducts[product.id] || customProducts[String(product.id)] || {};
     return {
         name: custom.name || product.name,
         description: custom.description || product.description || 'No description.',
-        price: custom.price || ((product.price_usdt || 0) * config.usdt_to_npr_rate).toFixed(2)
+        price: custom.price || ((product.price_usdt || 0) * (db.getConfig('usdt_to_npr_rate') || 250)).toFixed(2)
     };
 }
 
@@ -55,32 +107,117 @@ async function trackStockChanges() {
     try {
         const res = await tunvnmmoAPI.get('/products');
         const products = extractArray(res.data);
-        const channelId = config.notification_channel_id;
+        const channelId = db.getConfig('notification_channel_id');
         if (!channelId) return;
         const channel = client.channels.cache.get(channelId);
         if (!channel) return;
 
-        products.forEach(product => {
-            const currentStock = product.stock;
-            const lastStock = config.last_known_stock[product.id];
+        let lastKnownStock = db.getConfig('last_known_stock') || {};
+        let updated = false;
+
+        for (const product of products) {
+            const currentStock = Number(product.stock || 0);
+            const lastStock = lastKnownStock[String(product.id)] !== undefined ? Number(lastKnownStock[String(product.id)]) : undefined;
+            
             if (lastStock !== undefined && lastStock !== currentStock) {
+                const pData = getProductData(product);
+                
+                let title = '📦 STOCK UPDATE';
+                let color = 0x9b59b6; // Purple (Standard update)
+                let mention = '';
+                let statusText = '🟢 Available';
+                
+                if (lastStock === 0 && currentStock > 0) {
+                    title = '🎉 PRODUCT RESTOCKED!';
+                    color = 0x2ecc71; // Vivid Green
+                    const pingRole = db.getConfig('restock_ping_role');
+                    mention = pingRole ? `<@&${pingRole}> ` : '';
+                    statusText = '🟢 Back in Stock!';
+                } else if (currentStock === 0 && lastStock > 0) {
+                    title = '🔴 SOLD OUT';
+                    color = 0xe74c3c; // Vivid Red
+                    statusText = '🔴 Temporarily Out of Stock';
+                } else if (currentStock > lastStock) {
+                    title = '📈 STOCK INCREASED';
+                    color = 0x2ecc71; // Green
+                    statusText = '🟢 Stock Refilled';
+                } else if (currentStock < lastStock) {
+                    title = '📉 STOCK DECREASED';
+                    color = 0xe67e22; // Orange
+                    statusText = currentStock <= 5 ? '🟡 Low Stock!' : '🟢 Available';
+                }
+
                 const embed = new EmbedBuilder()
-                    .setTitle('📦 Stock Update')
-                    .setDescription(`${product.name}: ${lastStock} → ${currentStock}`)
-                    .setColor(currentStock > 0 ? 0x00FF00 : 0xFF0000)
+                    .setTitle(title)
+                    .setDescription(`### 🛍️ ${pData.name}`)
+                    .addFields(
+                        { name: '📊 Stock Change', value: `\` ${lastStock} \` ➔ \` ${currentStock} \``, inline: true },
+                        { name: '💵 Price', value: `\` ${pData.price} NPR \``, inline: true },
+                        { name: '⚡ Status', value: `**${statusText}**`, inline: true }
+                    )
+                    .setColor(color)
+                    .setFooter({ text: 'IdeaClick Automated Shop Alerts' })
                     .setTimestamp();
-                channel.send({ embeds: [embed] }).catch(console.error);
+                    
+                await channel.send({
+                    content: mention,
+                    embeds: [embed]
+                }).catch(err => log.error({ err: err.message }, 'Failed to send stock alert'));
+
+                // Fake live sale notification when stock decreases
+                if (currentStock < lastStock) {
+                    const diff = lastStock - currentStock;
+                    const liveSalesChannelId = db.getConfig('live_sales_channel_id');
+                    if (liveSalesChannelId) {
+                        const liveSalesChannel = client.channels.cache.get(liveSalesChannelId);
+                        if (liveSalesChannel) {
+                            const fakePurchaseEmbed = new EmbedBuilder()
+                                .setDescription(`🛒 **New Purchase!** 👤 An anonymous customer just bought **${diff}x ${pData.name}**! ⚡ Delivery Speed: **Instant (0.1s)**`)
+                                .setColor(0x2ecc71);
+
+                            await liveSalesChannel.send({ embeds: [fakePurchaseEmbed] }).catch(err => log.error({ err: err.message }, 'Failed to send fake live sale alert'));
+                        }
+                    }
+                }
+                
+                // Send owner DM warning if stock is low
+                const ownerId = db.getConfig('owner_discord_id') || process.env.OWNER_DISCORD_ID;
+                if (ownerId && currentStock <= 5 && (lastStock === undefined || lastStock > 5)) {
+                    try {
+                        const owner = await client.users.fetch(ownerId);
+                        if (owner) {
+                            const warningEmbed = new EmbedBuilder()
+                                .setTitle('⚠️ Low Stock Warning')
+                                .setDescription(`The product **${pData.name}** is low in stock!\nRemaining Stock: **${currentStock}**`)
+                                .setColor(0xe67e22)
+                                .setTimestamp();
+                            await owner.send({ embeds: [warningEmbed] });
+                        }
+                    } catch (e) {
+                        log.error({ err: e.message, ownerId }, 'Failed to send low stock alert to owner');
+                    }
+                }
+                
+                log.info({ product: product.name, lastStock, currentStock }, 'Stock updated');
             }
-            config.last_known_stock[product.id] = currentStock;
-        });
-        saveConfig();
-    } catch (error) { console.error('❌ Stock tracker error:', error.message); }
+            lastKnownStock[String(product.id)] = currentStock;
+            updated = true;
+        }
+        
+        if (updated) {
+            db.setConfig('last_known_stock', lastKnownStock);
+        }
+    } catch (error) { log.error({ err: error.message }, 'Stock tracker error'); }
 }
 
 client.once('clientReady', async () => {
-    console.log(`✅ Bot logged in as ${client.user.tag}`);
+    log.info({ user: client.user.tag }, 'Bot logged in');
     await trackStockChanges();
-    setInterval(trackStockChanges, 5 * 60 * 1000); 
+    setInterval(trackStockChanges, 1 * 60 * 1000); 
+    
+    // Daily database backup
+    await runDailyBackup();
+    setInterval(runDailyBackup, 24 * 60 * 60 * 1000);
 });
 
 function getNavRow(excludeButton) {
@@ -115,10 +252,10 @@ function getMainMenuRows() {
     ];
 }
 
-// ✅ FIXED: Emoji at the END of label for better Discord rendering
-function buildShopRows(products) {
+function buildShopRows(products, page = 0) {
     const rows = [];
-    const productsToShow = products.slice(0, 8); 
+    const start = page * SHOP_PAGE_SIZE;
+    const productsToShow = products.slice(start, start + SHOP_PAGE_SIZE);
     
     for (let i = 0; i < productsToShow.length; i += 2) {
         const row = new ActionRowBuilder();
@@ -161,6 +298,92 @@ function getShopEmbed() {
 👇 **Tap a product to view details:**`)
         .setColor(0xFFA500);
 }
+
+function getShopPaginationRow(page, totalPages) {
+    return new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+            .setCustomId(`shop_page_${page - 1}`)
+            .setLabel('◀ Previous')
+            .setStyle(ButtonStyle.Secondary)
+            .setDisabled(page === 0),
+        new ButtonBuilder()
+            .setCustomId('shop_pageinfo')
+            .setLabel(`Page ${page + 1} / ${totalPages}`)
+            .setStyle(ButtonStyle.Secondary)
+            .setDisabled(true),
+        new ButtonBuilder()
+            .setCustomId(`shop_page_${page + 1}`)
+            .setLabel('Next ▶')
+            .setStyle(ButtonStyle.Secondary)
+            .setDisabled(page >= totalPages - 1)
+    );
+}
+
+async function renderShopPage(interaction, products, page) {
+    const totalPages = Math.max(1, Math.ceil(products.length / SHOP_PAGE_SIZE));
+    if (page < 0) page = 0;
+    if (page >= totalPages) page = totalPages - 1;
+    
+    const rows = buildShopRows(products, page);
+    if (totalPages > 1) {
+        rows.push(getShopPaginationRow(page, totalPages));
+    }
+    rows.push(getNavRow('shop'));
+    
+    const embed = getShopEmbed();
+    if (totalPages > 1) {
+        embed.setFooter({ text: `Page ${page + 1} of ${totalPages} • ${products.length} products` });
+    }
+    
+    await interaction.update({ embeds: [embed], components: rows });
+}
+
+async function renderHistoryPage(interaction, page) {
+    const { items, total } = db.getUserHistory(interaction.user.id, page, HISTORY_PAGE_SIZE);
+    const totalPages = Math.max(1, Math.ceil(total / HISTORY_PAGE_SIZE));
+    if (page < 0) page = 0;
+    if (page >= totalPages) page = totalPages - 1;
+    
+    const embed = new EmbedBuilder()
+        .setTitle('📜 Your Purchase History')
+        .setColor(0x9900FF);
+    
+    if (items.length === 0) {
+        embed.setDescription('You have no purchase history yet.');
+    } else {
+        items.forEach((purchase, i) => {
+            const globalIndex = total - (page * HISTORY_PAGE_SIZE + i);
+            const date = new Date(purchase.date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+            embed.addFields({ name: `#${globalIndex} - ${date}`, value: `**${purchase.product}**\nQty: ${purchase.quantity} | Price: ${purchase.price} NPR`, inline: false });
+        });
+        embed.setFooter({ text: `Page ${page + 1} of ${totalPages} • ${total} total purchases` });
+    }
+    
+    const components = [];
+    if (totalPages > 1) {
+        components.push(new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+                .setCustomId(`history_page_${page - 1}`)
+                .setLabel('◀ Previous')
+                .setStyle(ButtonStyle.Secondary)
+                .setDisabled(page === 0),
+            new ButtonBuilder()
+                .setCustomId('history_pageinfo')
+                .setLabel(`Page ${page + 1} / ${totalPages}`)
+                .setStyle(ButtonStyle.Secondary)
+                .setDisabled(true),
+            new ButtonBuilder()
+                .setCustomId(`history_page_${page + 1}`)
+                .setLabel('Next ▶')
+                .setStyle(ButtonStyle.Secondary)
+                .setDisabled(page >= totalPages - 1)
+        ));
+    }
+    components.push(getNavRow('history'));
+    
+    await interaction.update({ embeds: [embed], components });
+}
+
 
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isChatInputCommand() && !interaction.isButton() && !interaction.isModalSubmit()) return;
@@ -237,36 +460,20 @@ Join our support channel or open a ticket!
         if (interaction.isButton() && interaction.customId === 'shop') {
             const productsResponse = await tunvnmmoAPI.get('/products');
             const allProducts = extractArray(productsResponse.data);
-            const hiddenProducts = config.hidden_products || [];
-            const products = allProducts.filter(p => !hiddenProducts.includes(String(p.id)));
+            const hiddenProducts = db.getConfig('hidden_products') || [];
+            const products = sortProducts(allProducts.filter(p => !hiddenProducts.includes(String(p.id))));
             if (products.length === 0) return await interaction.update({ content: '📭 No products available.', components: [], ...ephemeral });
-            
-            const rows = buildShopRows(products);
-            rows.push(getNavRow('shop'));
-            await interaction.update({ embeds: [getShopEmbed()], components: rows });
+            await renderShopPage(interaction, products, 0);
         }
 
         if (interaction.isButton() && interaction.customId === 'balance') {
-            try { users = JSON.parse(fs.readFileSync('users.json', 'utf8')); } catch (e) { users = {}; }
-            const user = users[interaction.user.id] || { balance_npr: 0, loyalty_points: 0 };
+            const user = db.getUser(interaction.user.id) || { balance_npr: 0, loyalty_points: 0 };
             const embed = new EmbedBuilder().setTitle('💰 Your Balance').addFields({ name: '💰 Balance', value: `${user.balance_npr} NPR`, inline: true }, { name: '🏆 Loyalty Points', value: `${user.loyalty_points || 0} pts`, inline: true }).setColor(0x00FF00).setTimestamp();
             await interaction.update({ embeds: [embed], components: [getNavRow('balance')] });
         }
 
         if (interaction.isButton() && interaction.customId === 'history') {
-            try { users = JSON.parse(fs.readFileSync('users.json', 'utf8')); } catch (e) { users = {}; }
-            const user = users[interaction.user.id];
-            const history = user?.purchase_history || [];
-            const embed = new EmbedBuilder().setTitle('📜 Your Purchase History').setColor(0x9900FF);
-            if (history.length === 0) embed.setDescription('You have no purchase history yet.');
-            else {
-                const recentHistory = [...history].reverse().slice(0, 10);
-                recentHistory.forEach((purchase, i) => {
-                    const date = new Date(purchase.date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-                    embed.addFields({ name: `#${history.length - i} - ${date}`, value: `**${purchase.product}**\nQty: ${purchase.quantity} | Price: ${purchase.price} NPR`, inline: false });
-                });
-            }
-            await interaction.update({ embeds: [embed], components: [getNavRow('history')] });
+            await renderHistoryPage(interaction, 0);
         }
 
         if (interaction.isButton() && interaction.customId === 'deposit') {
@@ -275,21 +482,31 @@ Join our support channel or open a ticket!
         }
 
         if (interaction.isButton() && interaction.customId === 'daily') {
-            try { users = JSON.parse(fs.readFileSync('users.json', 'utf8')); } catch (e) { users = {}; }
-            if (!users[interaction.user.id]) users[interaction.user.id] = { balance_npr: 0, loyalty_points: 0 };
-            const user = users[interaction.user.id];
-            const now = Date.now();
-            const oneDay = 24 * 60 * 60 * 1000;
-            if (user.last_daily_claim && (now - user.last_daily_claim < oneDay)) {
-                const nextClaim = new Date(user.last_daily_claim + oneDay);
-                return await interaction.reply({ content: `⏰ You already claimed your daily reward! Come back at **${nextClaim.toLocaleTimeString()}**.`, ...ephemeral });
+            try {
+                db.ensureUser(interaction.user.id);
+                const result = db.dailyClaim(interaction.user.id);
+                const embed = new EmbedBuilder()
+                    .setTitle('🎁 Daily Reward Claimed!')
+                    .setDescription(`You received **${result.reward} NPR**! 🎉\nCome back tomorrow.`)
+                    .setColor(0x00FF00)
+                    .setFooter({ text: `New Balance: ${result.balance_npr} NPR` });
+                
+                await sendStaffLog(
+                    new EmbedBuilder()
+                        .setTitle('🎁 Daily Reward Logged')
+                        .addFields(
+                            { name: 'User', value: `${interaction.user.tag} (\`${interaction.user.id}\`)`, inline: true },
+                            { name: 'Reward', value: `\` ${result.reward} NPR \``, inline: true },
+                            { name: 'New Balance', value: `\` ${result.balance_npr} NPR \``, inline: true }
+                        )
+                        .setColor(0x2ecc71)
+                        .setTimestamp()
+                );
+                
+                await interaction.reply({ embeds: [embed], ...ephemeral });
+            } catch (error) {
+                await interaction.reply({ content: `⏰ ${error.message}`, ...ephemeral });
             }
-            const reward = Math.floor(Math.random() * 10) + 1;
-            user.balance_npr += reward;
-            user.last_daily_claim = now;
-            saveUsers();
-            const embed = new EmbedBuilder().setTitle('🎁 Daily Reward Claimed!').setDescription(`You received **${reward} NPR**! 🎉\nCome back tomorrow for another chance.`).setColor(0x00FF00).setFooter({ text: `New Balance: ${user.balance_npr} NPR` });
-            await interaction.reply({ embeds: [embed], ...ephemeral });
         }
 
         if (interaction.isButton() && interaction.customId === 'redeem') {
@@ -300,34 +517,20 @@ Join our support channel or open a ticket!
         if (interaction.isButton() && interaction.customId === 'nav_shop') {
             const productsResponse = await tunvnmmoAPI.get('/products');
             const allProducts = extractArray(productsResponse.data);
-            const hiddenProducts = config.hidden_products || [];
-            const products = allProducts.filter(p => !hiddenProducts.includes(String(p.id)));
-            const rows = buildShopRows(products);
-            rows.push(getNavRow('shop'));
-            await interaction.update({ embeds: [getShopEmbed()], components: rows });
+            const hiddenProducts = db.getConfig('hidden_products') || [];
+            const products = sortProducts(allProducts.filter(p => !hiddenProducts.includes(String(p.id))));
+            if (products.length === 0) return await interaction.update({ content: '📭 No products available.', components: [], ...ephemeral });
+            await renderShopPage(interaction, products, 0);
         }
 
         if (interaction.isButton() && interaction.customId === 'nav_balance') {
-            try { users = JSON.parse(fs.readFileSync('users.json', 'utf8')); } catch (e) { users = {}; }
-            const user = users[interaction.user.id] || { balance_npr: 0, loyalty_points: 0 };
+            const user = db.getUser(interaction.user.id) || { balance_npr: 0, loyalty_points: 0 };
             const embed = new EmbedBuilder().setTitle('💰 Balance').addFields({ name: '💰 Balance', value: `${user.balance_npr} NPR`, inline: true }, { name: ' Loyalty Points', value: `${user.loyalty_points || 0} pts`, inline: true }).setColor(0x00FF00).setTimestamp();
             await interaction.update({ embeds: [embed], components: [getNavRow('balance')] });
         }
 
         if (interaction.isButton() && interaction.customId === 'nav_history') {
-            try { users = JSON.parse(fs.readFileSync('users.json', 'utf8')); } catch (e) { users = {}; }
-            const user = users[interaction.user.id];
-            const history = user?.purchase_history || [];
-            const embed = new EmbedBuilder().setTitle('📜 Your Purchase History').setColor(0x9900FF);
-            if (history.length === 0) embed.setDescription('You have no purchase history yet.');
-            else {
-                const recentHistory = [...history].reverse().slice(0, 10);
-                recentHistory.forEach((purchase, i) => {
-                    const date = new Date(purchase.date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-                    embed.addFields({ name: `#${history.length - i} - ${date}`, value: `**${purchase.product}**\nQty: ${purchase.quantity} | Price: ${purchase.price} NPR`, inline: false });
-                });
-            }
-            await interaction.update({ embeds: [embed], components: [getNavRow('history')] });
+            await renderHistoryPage(interaction, 0);
         }
 
         if (interaction.isButton() && interaction.customId === 'nav_deposit') {
@@ -338,6 +541,22 @@ Join our support channel or open a ticket!
         if (interaction.isButton() && interaction.customId === 'nav_back') {
             const mainMenuEmbed = new EmbedBuilder().setTitle('🏪 Shop Menu').setDescription('Choose an option below:').setColor(0x0099FF);
             await interaction.update({ embeds: [mainMenuEmbed], components: getMainMenuRows() });
+        }
+
+        if (interaction.isButton() && interaction.customId.startsWith('shop_page_')) {
+            const page = parseInt(interaction.customId.replace('shop_page_', ''));
+            if (isNaN(page)) return;
+            const productsResponse = await tunvnmmoAPI.get('/products');
+            const allProducts = extractArray(productsResponse.data);
+            const hiddenProducts = db.getConfig('hidden_products') || [];
+            const products = sortProducts(allProducts.filter(p => !hiddenProducts.includes(String(p.id))));
+            await renderShopPage(interaction, products, page);
+        }
+
+        if (interaction.isButton() && interaction.customId.startsWith('history_page_')) {
+            const page = parseInt(interaction.customId.replace('history_page_', ''));
+            if (isNaN(page)) return;
+            await renderHistoryPage(interaction, page);
         }
 
         if (interaction.isButton() && interaction.customId.startsWith('view_')) {
@@ -364,49 +583,162 @@ Join our support channel or open a ticket!
             await interaction.showModal(modal);
         }
 
+        if (interaction.isButton() && interaction.customId.startsWith('confirmbuy_')) {
+            const parts = interaction.customId.split('_');
+            const productId = parts[1];
+            const quantity = parseInt(parts[2]);
+            await interaction.deferUpdate();
+            try {
+                const productsRes = await tunvnmmoAPI.get('/products');
+                const product = extractArray(productsRes.data).find(p => String(p.id) === String(productId));
+                if (!product) throw new Error('Product not found');
+                const pData = getProductData(product);
+                const totalCost = Number(pData.price) * quantity;
+                
+                db.ensureUser(interaction.user.id, interaction.user.tag);
+                const txResult = db.purchaseTransaction(interaction.user.id, pData.name, quantity, totalCost);
+                
+                let buyData;
+                try {
+                    const buyRes = await tunvnmmoAPI.post('/buy', { product_id: parseInt(productId), quantity, currency: 'usdt' });
+                    buyData = buyRes.data;
+                    if (buyData.success === false || buyData.error) throw new Error(buyData.message || 'API returned failure');
+                } catch (apiError) {
+                    db.refundUser(interaction.user.id, totalCost);
+                    log.warn({ userId: interaction.user.id, product: pData.name, totalCost, error: apiError.message }, 'Purchase API failed, balance refunded');
+                    throw new Error(`Purchase failed, your ${totalCost} NPR has been refunded. (${apiError.message})`);
+                }
+                
+                log.info({ userId: interaction.user.id, product: pData.name, quantity, totalCost, pointsEarned: txResult.pointsEarned }, 'Purchase completed successfully');
+                let details = buyData.account_details || (buyData.items ? buyData.items.join('\n') : 'No details');
+                
+                const formattedDetails = `\`\`\`text\n${details}\n\`\`\``;
+                
+                const embed = new EmbedBuilder()
+                    .setTitle('✅ Success!')
+                    .setDescription(`Bought ${quantity}x **${pData.name}**\nCost: **${totalCost} NPR**\nRemaining Balance: **${txResult.balance_npr} NPR**\n**+${txResult.pointsEarned} Loyalty Points earned!**`)
+                    .addFields({ name: '🔑 Delivery Details', value: formattedDetails })
+                    .setColor(0x00FF00);
+                    
+                await sendStaffLog(
+                    new EmbedBuilder()
+                        .setTitle('🛒 Purchase Logged')
+                        .addFields(
+                            { name: 'Buyer', value: `${interaction.user.tag} (\`${interaction.user.id}\`)`, inline: true },
+                            { name: 'Product', value: pData.name, inline: true },
+                            { name: 'Quantity', value: String(quantity), inline: true },
+                            { name: 'Total Cost', value: `${totalCost} NPR`, inline: true },
+                            { name: 'New Balance', value: `${txResult.balance_npr} NPR`, inline: true }
+                        )
+                        .setColor(0x3498db)
+                        .setTimestamp()
+                );
+                
+                try { await interaction.user.send({ embeds: [embed] }); } catch(e) {
+                    log.warn({ userId: interaction.user.id }, 'Could not send DM');
+                }
+                await interaction.editReply({ 
+                    embeds: [
+                        new EmbedBuilder()
+                            .setTitle('🎉 Purchase Successful!')
+                            .setDescription(`Bought ${quantity}x **${pData.name}**\nCheck your Direct Messages (DMs) for details!`)
+                            .setColor(0x00FF00)
+                    ], 
+                    components: [getNavRow('categories')] 
+                });
+            } catch (error) {
+                log.error({ userId: interaction.user.id, error: error.message }, 'Purchase error');
+                await interaction.editReply({ 
+                    embeds: [
+                        new EmbedBuilder()
+                            .setTitle('❌ Transaction Failed')
+                            .setDescription(error.message)
+                            .setColor(0xFF0000)
+                    ], 
+                    components: [getNavRow('categories')] 
+                });
+            }
+        }
+
         if (interaction.isModalSubmit() && interaction.customId.startsWith('purchase_')) {
             const productId = interaction.customId.replace('purchase_', '');
             const quantity = parseInt(interaction.fields.getTextInputValue('qty'));
+            if (isNaN(quantity) || quantity <= 0) return await interaction.reply({ content: '❌ Invalid quantity.', ...ephemeral });
             await interaction.deferReply({ ...ephemeral });
             try {
                 const productsRes = await tunvnmmoAPI.get('/products');
                 const product = extractArray(productsRes.data).find(p => String(p.id) === String(productId));
-                if (!product) throw new Error("Product not found");
+                if (!product) throw new Error('Product not found');
                 const pData = getProductData(product);
                 const totalCost = Number(pData.price) * quantity;
-                try { users = JSON.parse(fs.readFileSync('users.json', 'utf8')); } catch (e) { users = {}; }
-                if (!users[interaction.user.id]) users[interaction.user.id] = { balance_npr: 0, loyalty_points: 0, purchase_history: [] };
-                if (users[interaction.user.id].balance_npr < totalCost) throw new Error(`Need ${totalCost} NPR, have ${users[interaction.user.id].balance_npr} NPR`);
-                const buyRes = await tunvnmmoAPI.post('/buy', { product_id: parseInt(productId), quantity, currency: 'usdt' });
-                const data = buyRes.data;
-                if (data.success === false || data.error) throw new Error(data.message || "Failed");
-                users[interaction.user.id].balance_npr -= totalCost;
-                const pointsEarned = Math.floor(totalCost / 10);
-                if (!users[interaction.user.id].loyalty_points) users[interaction.user.id].loyalty_points = 0;
-                users[interaction.user.id].loyalty_points += pointsEarned;
-                if (!users[interaction.user.id].purchase_history) users[interaction.user.id].purchase_history = [];
-                users[interaction.user.id].purchase_history.push({ product: pData.name, price: totalCost, quantity: quantity, date: new Date().toISOString() });
-                saveUsers();
-                let details = data.account_details || (data.items ? data.items.join('\n') : "No details");
-                const embed = new EmbedBuilder().setTitle('✅ Success!').setDescription(`Bought ${quantity}x ${pData.name}\nCost: ${totalCost} NPR\nBalance: ${users[interaction.user.id].balance_npr} NPR\n**+${pointsEarned} Loyalty Points earned!**`).addFields({ name: 'Details', value: `\`\`\`${details}\`\`\`` }).setColor(0x00FF00);
-                try { await interaction.user.send({ embeds: [embed] }); } catch(e) {}
-                await interaction.editReply({ embeds: [embed.setDescription(`Bought ${quantity}x ${pData.name}\nCheck DMs for details!`)], components: [getNavRow('shop')] });
-            } catch (error) { await interaction.editReply({ content: `❌ ${error.message}`, components: [getNavRow('shop')] }); }
+                
+                db.ensureUser(interaction.user.id, interaction.user.tag);
+                const user = db.getUser(interaction.user.id);
+                if (user.balance_npr < totalCost) {
+                    throw new Error(`Insufficient balance. You need **${totalCost} NPR** but only have **${user.balance_npr} NPR**.`);
+                }
+                
+                const nextBalance = Number((user.balance_npr - totalCost).toFixed(2));
+                
+                const embed = new EmbedBuilder()
+                    .setTitle('🛒 CONFIRM YOUR PURCHASE')
+                    .setDescription(`Please verify your order details before completing the purchase.`)
+                    .addFields(
+                        { name: '📦 Product', value: pData.name, inline: false },
+                        { name: '📊 Quantity', value: `\` ${quantity} \``, inline: true },
+                        { name: '💵 Price per Unit', value: `\` ${pData.price} NPR \``, inline: true },
+                        { name: '💰 Total Price', value: `\` ${totalCost} NPR \``, inline: false },
+                        { name: '💳 Balance Before', value: `\` ${user.balance_npr} NPR \``, inline: true },
+                        { name: '💳 Balance After', value: `**${nextBalance} NPR**`, inline: true }
+                    )
+                    .setColor(0xFFA500)
+                    .setTimestamp();
+                    
+                const row = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder()
+                        .setCustomId(`confirmbuy_${productId}_${quantity}`)
+                        .setLabel('✅ Confirm & Buy')
+                        .setStyle(ButtonStyle.Success),
+                    new ButtonBuilder()
+                        .setCustomId('nav_shop')
+                        .setLabel('❌ Cancel')
+                        .setStyle(ButtonStyle.Danger)
+                );
+                
+                await interaction.editReply({ embeds: [embed], components: [row] });
+            } catch (error) {
+                await interaction.editReply({ content: `❌ ${error.message}`, components: [getNavRow('categories')] });
+            }
         }
 
         if (interaction.isModalSubmit() && interaction.customId === 'redeem_modal') {
             const pointsToRedeem = parseInt(interaction.fields.getTextInputValue('points'));
-            if (isNaN(pointsToRedeem) || pointsToRedeem <= 0) return await interaction.reply({ content: ' Invalid points amount.', ...ephemeral });
-            try { users = JSON.parse(fs.readFileSync('users.json', 'utf8')); } catch (e) { users = {}; }
-            const user = users[interaction.user.id];
-            if (!user || !user.loyalty_points || user.loyalty_points < pointsToRedeem) return await interaction.reply({ content: `❌ You don't have enough points! You have **${user?.loyalty_points || 0}** points.`, ...ephemeral });
-            const nprEarned = Math.floor(pointsToRedeem / 10);
-            if (nprEarned < 1) return await interaction.reply({ content: '❌ Minimum redeem is 10 points (equals 1 NPR).', ...ephemeral });
-            user.loyalty_points -= pointsToRedeem;
-            user.balance_npr += nprEarned;
-            saveUsers();
-            const embed = new EmbedBuilder().setTitle('🏆 Points Redeemed!').setDescription(`You exchanged **${pointsToRedeem} points** for **${nprEarned} NPR**! 💰`).setColor(0xFFD700).setFooter({ text: `Points left: ${user.loyalty_points} | Balance: ${user.balance_npr} NPR` });
-            await interaction.reply({ embeds: [embed], ...ephemeral });
+            if (isNaN(pointsToRedeem) || pointsToRedeem <= 0) return await interaction.reply({ content: '❌ Invalid points amount.', ...ephemeral });
+            try {
+                const result = db.redeemPoints(interaction.user.id, pointsToRedeem);
+                const embed = new EmbedBuilder()
+                    .setTitle('🏆 Points Redeemed!')
+                    .setDescription(`You exchanged **${pointsToRedeem} points** for **${result.nprEarned} NPR**! 💰`)
+                    .setColor(0xFFD700)
+                    .setFooter({ text: `Points left: ${result.loyalty_points} | Balance: ${result.balance_npr} NPR` });
+                
+                await sendStaffLog(
+                    new EmbedBuilder()
+                        .setTitle('🏆 Points Redeemed')
+                        .addFields(
+                            { name: 'User', value: `${interaction.user.tag} (\`${interaction.user.id}\`)`, inline: true },
+                            { name: 'Points Exchanged', value: String(pointsToRedeem), inline: true },
+                            { name: 'NPR Credited', value: `${result.nprEarned} NPR`, inline: true },
+                            { name: 'New Balance', value: `${result.balance_npr} NPR`, inline: true }
+                        )
+                        .setColor(0xf1c40f)
+                        .setTimestamp()
+                );
+                
+                await interaction.reply({ embeds: [embed], ...ephemeral });
+            } catch (error) {
+                await interaction.reply({ content: `❌ ${error.message}`, ...ephemeral });
+            }
         }
 
         if (interaction.isModalSubmit() && (interaction.customId === 'deposit_modal' || interaction.customId === 'deposit_modal_nav')) {
@@ -423,7 +755,7 @@ Join our support channel or open a ticket!
             } catch (error) { await interaction.editReply({ content: '❌ Deposit failed' }); }
         }
 
-    } catch (error) { console.error('❌ Error:', error.message); }
+    } catch (error) { log.error({ err: error.message }, 'Global interaction error'); }
 });
 
 client.login(process.env.DISCORD_TOKEN);

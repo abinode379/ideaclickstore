@@ -2,3 +2,7 @@ node_modules/
 .env
 users.json
 config.json
+admin_logs.json
+store.db
+logs/
+*.bak

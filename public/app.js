@@ -3,6 +3,12 @@ document.addEventListener('DOMContentLoaded', () => {
     initMobileMenu();
     initModals();
 
+    // Fetch admin info
+    fetch('/api/me').then(r => r.json()).then(me => {
+        const el = document.querySelector('.admin-name');
+        if (el && me.username) el.innerText = me.username;
+    }).catch(() => {});
+
     // Load default tab
     loadDashboard();
 });
@@ -165,6 +171,8 @@ function openBalanceModal(userId, username, currentBalance) {
 // Make globally accessible (no ES module export)
 window.openBalanceModal = openBalanceModal;
 
+let salesChartInstance = null;
+
 // ========== Dashboard ==========
 async function loadDashboard() {
     try {
@@ -193,8 +201,98 @@ async function loadDashboard() {
             const settings = await setRes.json();
             const rateInput = document.getElementById('setting-rate');
             const channelInput = document.getElementById('setting-channel');
+            const liveSalesInput = document.getElementById('setting-live-sales');
             if (rateInput) rateInput.value = settings.usdt_to_npr_rate || '';
             if (channelInput) channelInput.value = settings.notification_channel_id || '';
+            if (liveSalesInput) liveSalesInput.value = settings.live_sales_channel_id || '';
+        }
+
+        // Fetch Analytics
+        const analyticsRes = await fetch('/api/analytics');
+        if (analyticsRes.ok) {
+            const data = await analyticsRes.json();
+            
+            const statSales = document.getElementById('stat-sales');
+            const statDeposits = document.getElementById('stat-deposits');
+            if (statSales) statSales.innerText = formatNumber(data.totalSales);
+            if (statDeposits) statDeposits.innerText = formatNumber(data.totalDeposits);
+            
+            const topList = document.getElementById('popular-products-list');
+            if (topList) {
+                topList.innerHTML = '';
+                if (!data.popularProducts || data.popularProducts.length === 0) {
+                    topList.innerHTML = '<div style="color: var(--text-secondary); text-align: center; padding: 1rem;">No sales recorded yet.</div>';
+                } else {
+                    data.popularProducts.forEach((p, idx) => {
+                        const item = document.createElement('div');
+                        item.className = 'glass-card';
+                        item.style.padding = '0.75rem 1rem';
+                        item.style.display = 'flex';
+                        item.style.justifyContent = 'space-between';
+                        item.style.alignItems = 'center';
+                        item.innerHTML = `
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <span style="font-weight: 700; color: var(--primary); font-size: 1.125rem;">#${idx + 1}</span>
+                                <span style="font-weight: 500; font-size: 0.875rem;">${p.name}</span>
+                            </div>
+                            <span class="badge in-stock" style="font-size: 0.75rem;">${p.qty} sold</span>
+                        `;
+                        topList.appendChild(item);
+                    });
+                }
+            }
+            
+            const ctx = document.getElementById('salesChart');
+            if (ctx && window.Chart) {
+                if (salesChartInstance) {
+                    salesChartInstance.destroy();
+                }
+                salesChartInstance = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: data.charts.labels,
+                        datasets: [
+                            {
+                                label: 'Sales (NPR)',
+                                data: data.charts.sales,
+                                borderColor: '#7c3aed',
+                                backgroundColor: 'rgba(124, 58, 237, 0.1)',
+                                borderWidth: 3,
+                                tension: 0.3,
+                                fill: true
+                            },
+                            {
+                                label: 'Deposits (NPR)',
+                                data: data.charts.deposits,
+                                borderColor: '#10b981',
+                                backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                                borderWidth: 3,
+                                tension: 0.3,
+                                fill: true
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                labels: { color: '#1e1b4b', font: { family: 'Outfit', weight: '600' } }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                grid: { color: 'rgba(139, 92, 246, 0.08)' },
+                                ticks: { color: '#6b7280' }
+                            },
+                            y: {
+                                grid: { color: 'rgba(139, 92, 246, 0.08)' },
+                                ticks: { color: '#6b7280' }
+                            }
+                        }
+                    }
+                });
+            }
         }
     } catch (err) {
         console.error('Dashboard load error:', err);
@@ -207,12 +305,17 @@ async function loadDashboard() {
         saveBtn.onclick = async () => {
             const rate = parseFloat(document.getElementById('setting-rate').value);
             const channelId = document.getElementById('setting-channel').value;
+            const liveSalesId = document.getElementById('setting-live-sales').value;
 
             try {
                 const res = await fetch('/api/settings', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ usdt_to_npr_rate: rate, notification_channel_id: channelId })
+                    body: JSON.stringify({ 
+                        usdt_to_npr_rate: rate, 
+                        notification_channel_id: channelId,
+                        live_sales_channel_id: liveSalesId
+                    })
                 });
                 if (!res.ok) throw new Error('Failed to save settings');
                 showToast('Settings saved successfully', 'success');
@@ -224,6 +327,21 @@ async function loadDashboard() {
 }
 
 // ========== Products ==========
+async function saveProductOrder(orderIds) {
+    try {
+        const res = await fetch('/api/products/order', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ order: orderIds })
+        });
+        if (!res.ok) throw new Error('Failed to save product order');
+        showToast('Order updated', 'success');
+        loadProducts();
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
+}
+
 async function loadProducts() {
     const grid = document.getElementById('products-grid');
     if (!grid) return;
@@ -259,9 +377,15 @@ async function loadProducts() {
                         <div class="product-id">ID: ${p.id}</div>
                         <div class="product-name">${displayName}</div>
                     </div>
-                    <div style="display:flex; gap:6px; flex-wrap:wrap;">
-                        ${stockBadge}
-                        ${hiddenBadge}
+                    <div style="display:flex; flex-direction:column; align-items:flex-end; gap:6px;">
+                        <div style="display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end;">
+                            ${stockBadge}
+                            ${hiddenBadge}
+                        </div>
+                        <div style="display:flex; gap:4px;">
+                            <button class="btn-secondary move-up-btn" style="padding: 4px 8px; font-size: 0.75rem;" title="Move Up">▲</button>
+                            <button class="btn-secondary move-down-btn" style="padding: 4px 8px; font-size: 0.75rem;" title="Move Down">▼</button>
+                        </div>
                     </div>
                 </div>
 
@@ -290,6 +414,24 @@ async function loadProducts() {
 
                 <button class="btn-primary w-100 save-prod-btn">Save Changes</button>
             `;
+
+            card.querySelector('.move-up-btn').addEventListener('click', async () => {
+                const idx = products.indexOf(p);
+                if (idx > 0) {
+                    products.splice(idx, 1);
+                    products.splice(idx - 1, 0, p);
+                    await saveProductOrder(products.map(item => String(item.id)));
+                }
+            });
+
+            card.querySelector('.move-down-btn').addEventListener('click', async () => {
+                const idx = products.indexOf(p);
+                if (idx < products.length - 1) {
+                    products.splice(idx, 1);
+                    products.splice(idx + 1, 0, p);
+                    await saveProductOrder(products.map(item => String(item.id)));
+                }
+            });
 
             card.querySelector('.save-prod-btn').addEventListener('click', async () => {
                 const nameVal = card.querySelector('.prod-name').value.trim();

@@ -2,7 +2,8 @@ require('dotenv').config();
 const express = require('express');
 const crypto = require('crypto');
 const axios = require('axios');
-const fs = require('fs');
+const db = require('./db');
+const log = require('./logger').child({ service: 'webhook' });
 
 const app = express();
 app.use(express.json({ verify: (req, res, buf) => { req.rawBody = buf; } }));
@@ -11,17 +12,44 @@ const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
 const WEBHOOK_SECRET = process.env.PAYBRIDGENP_WEBHOOK_SECRET?.trim();
 const PORT = process.env.PORT || 3000;
 
-// Helper to manage local user balances
-function addUserBalance(userId, username, amount) {
-    let users = {};
-    try { users = JSON.parse(fs.readFileSync('users.json', 'utf8')); } catch (e) {}
-    
-    if (!users[userId]) {
-        users[userId] = { balance_npr: 0, username: username };
+function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
+
+async function sendDMWithRetry(discordUserId, embed, retries = 3) {
+    for (let attempt = 1; attempt <= retries; attempt++) {
+        try {
+            const dmChannel = await axios.post(
+                'https://discord.com/api/v10/users/@me/channels',
+                { recipient_id: discordUserId },
+                { headers: { Authorization: `Bot ${DISCORD_TOKEN}` } }
+            );
+            await axios.post(
+                `https://discord.com/api/v10/channels/${dmChannel.data.id}/messages`,
+                { embeds: [embed] },
+                { headers: { Authorization: `Bot ${DISCORD_TOKEN}` } }
+            );
+            log.info({ userId: discordUserId, attempt }, 'DM sent successfully');
+            return true;
+        } catch (err) {
+            const status = err.response?.status;
+            if (status === 429) {
+                // Rate limited
+                const retryAfter = (err.response?.data?.retry_after || attempt * 2) * 1000;
+                log.warn({ userId: discordUserId, attempt, retryAfter }, 'Rate limited, retrying');
+                await sleep(retryAfter);
+            } else if (status === 403) {
+                // DMs disabled
+                log.warn({ userId: discordUserId }, 'User has DMs disabled, cannot notify');
+                return false;
+            } else if (attempt < retries) {
+                log.warn({ userId: discordUserId, attempt, error: err.message }, 'DM failed, retrying');
+                await sleep(attempt * 1000);
+            } else {
+                log.error({ userId: discordUserId, error: err.message }, 'DM failed after all retries');
+                return false;
+            }
+        }
     }
-    users[userId].balance_npr += Number(amount);
-    fs.writeFileSync('users.json', JSON.stringify(users, null, 2));
-    return users[userId].balance_npr;
+    return false;
 }
 
 app.post('/webhook/paybridgenp', async (req, res) => {
@@ -39,13 +67,13 @@ app.post('/webhook/paybridgenp', async (req, res) => {
             const expectedSig = crypto.createHmac('sha256', WEBHOOK_SECRET).update(signedPayload).digest('hex');
             
             if (receivedSignature !== expectedSig) {
-                console.error('❌ INVALID SIGNATURE!');
+                log.error('INVALID SIGNATURE!');
                 return res.status(401).send('Invalid signature');
             }
         }
 
         const event = req.body;
-        console.log('📩 Webhook received:', event.type || event.status);
+        log.info({ type: event.type || event.status }, 'Webhook received');
 
         const isSuccess = event.type === 'payment.succeeded' || event.status === 'success';
 
@@ -56,42 +84,26 @@ app.post('/webhook/paybridgenp', async (req, res) => {
             const username = metadata.discordUsername || 'User';
 
             if (discordUserId && amount !== 'Unknown') {
-                // 💰 ADD FUNDS TO USER'S LOCAL BALANCE
-                const newBalance = addUserBalance(discordUserId, username, amount);
-                console.log(`💰 Added ${amount} NPR to ${username}. New Balance: ${newBalance} NPR`);
+                // ADD FUNDS TO USER'S LOCAL BALANCE
+                const newBalance = db.addBalance(discordUserId, username, amount);
+                log.info({ userId: discordUserId, username, amount, newBalance }, 'Deposit processed');
 
                 // Notify the user on Discord
                 if (DISCORD_TOKEN) {
-                    try {
-                        const dmChannel = await axios.post(
-                            'https://discord.com/api/v10/users/@me/channels',
-                            { recipient_id: discordUserId },
-                            { headers: { Authorization: `Bot ${DISCORD_TOKEN}` } }
-                        );
-
-                        await axios.post(
-                            `https://discord.com/api/v10/channels/${dmChannel.data.id}/messages`,
-                            {
-                                embeds: [{
-                                    title: '✅ Deposit Successful!',
-                                    description: `Your deposit of **${amount} NPR** has been successfully processed.\n\nYour new bot balance is **${newBalance} NPR**. You can now use the **🛒 Shop**!`,
-                                    color: 0x00FF00,
-                                    timestamp: new Date().toISOString()
-                                }]
-                            },
-                            { headers: { Authorization: `Bot ${DISCORD_TOKEN}` } }
-                        );
-                        console.log(`✅ Notified user ${discordUserId}`);
-                    } catch (error) {
-                        console.error('❌ Failed to send DM:', error.message);
-                    }
+                    const embed = {
+                        title: '✅ Deposit Successful!',
+                        description: `Your deposit of **${amount} NPR** has been successfully processed.\n\nYour new bot balance is **${newBalance} NPR**. You can now use the **🛒 Shop**!`,
+                        color: 0x00FF00,
+                        timestamp: new Date().toISOString()
+                    };
+                    await sendDMWithRetry(discordUserId, embed);
                 }
             }
         }
 
         res.status(200).send('OK');
     } catch (error) {
-        console.error('❌ Webhook error:', error.message);
+        log.error({ error: error.message }, 'Webhook error');
         res.status(500).send('Internal Server Error');
     }
 });
@@ -106,6 +118,5 @@ app.get('/cancel', (req, res) => {
 });
 
 app.listen(PORT, () => {
-    console.log(`✅ Webhook server running on port ${PORT}`);
+    log.info({ port: PORT }, 'Webhook server running');
 });
-

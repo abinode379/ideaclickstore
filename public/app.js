@@ -441,24 +441,6 @@ async function loadProducts() {
                 : '<span class="badge out-of-stock">Out of Stock</span>';
             const hiddenBadge = isHidden ? '<span class="badge hidden">Hidden</span>' : '<span class="badge visible">Visible</span>';
 
-            card.innerHTML = `
-                <div class="product-header">
-                    <div>
-                        <div class="product-id">ID: ${p.id}</div>
-                        <div class="product-name">${displayName}</div>
-                    </div>
-                    <div style="display:flex; flex-direction:column; align-items:flex-end; gap:6px;">
-                        <div style="display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end;">
-                            ${stockBadge}
-                            ${hiddenBadge}
-                        </div>
-                        <div style="display:flex; gap:4px;">
-                            <button class="btn-secondary move-up-btn" style="padding: 4px 8px; font-size: 0.75rem;" title="Move Up">▲</button>
-                            <button class="btn-secondary move-down-btn" style="padding: 4px 8px; font-size: 0.75rem;" title="Move Down">▼</button>
-                        </div>
-                    </div>
-                </div>
-
             const isLocal = p.is_local === true;
             
             let stockHtml = '';

@@ -191,6 +191,7 @@ function initModals() {
             const price = parseFloat(document.getElementById('local-modal-price').value);
             const stockVal = document.getElementById('local-modal-stock').value;
             const stockLines = stockVal.split('\n').map(l => l.trim()).filter(Boolean);
+            const infiniteVal = document.getElementById('local-modal-infinite').checked;
 
             if (!name || isNaN(price)) {
                 showToast('Product name and price are required', 'error');
@@ -201,7 +202,7 @@ function initModals() {
                 const res = await fetch('/api/products/local', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ name, description: desc, price, stockLines })
+                    body: JSON.stringify({ name, description: desc, price, stockLines, infinite_stock: infiniteVal })
                 });
                 if (!res.ok) throw new Error('Failed to create local product');
                 showToast('Local product created successfully', 'success');
@@ -435,21 +436,31 @@ async function loadProducts() {
             const custom = p.custom || {};
             const isHidden = p.hidden === true;
             const displayName = custom.name || p.name || 'Unnamed';
+            const isLocal = p.is_local === true;
+            const isInfinite = p.infinite_stock === true;
             const stockCount = p.stock != null ? p.stock : 0;
-            const stockBadge = stockCount > 0
-                ? '<span class="badge in-stock">In Stock (' + stockCount + ')</span>'
-                : '<span class="badge out-of-stock">Out of Stock</span>';
+            const stockBadge = isInfinite
+                ? '<span class="badge in-stock" style="background-color:#d1fae5; color:#065f46; border-color:#a7f3d0;">Infinite Stock</span>'
+                : (stockCount > 0
+                    ? '<span class="badge in-stock">In Stock (' + stockCount + ')</span>'
+                    : '<span class="badge out-of-stock">Out of Stock</span>');
             const hiddenBadge = isHidden ? '<span class="badge hidden">Hidden</span>' : '<span class="badge visible">Visible</span>';
 
-            const isLocal = p.is_local === true;
-            
             let stockHtml = '';
             if (isLocal) {
                 stockHtml = `
                     <div class="form-group mt-3">
                         <label>Add Stock (One link/code per line)</label>
-                        <textarea class="textarea-field prod-stock" style="min-height: 80px;" placeholder="Paste new stock lines here to ADD to current stock..."></textarea>
-                        <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 4px;">Leaving this empty keeps current stock intact.</div>
+                        <textarea class="textarea-field prod-stock" style="min-height: 80px;" placeholder="${isInfinite ? 'Enter single reusable link here...' : 'Paste new stock lines here to ADD to current stock...'}"></textarea>
+                        <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 4px;">${isInfinite ? 'Reusable stock uses only the first link. Pasting a new one here will overwrite it.' : 'Leaving this empty keeps current stock intact.'}</div>
+                    </div>
+
+                    <div class="flex-between mt-3 mb-3">
+                        <label>Infinite / Reusable Stock</label>
+                        <label class="toggle-switch">
+                            <input type="checkbox" class="prod-infinite" ${isInfinite ? 'checked' : ''}>
+                            <span class="toggle-slider"></span>
+                        </label>
                     </div>
                 `;
             }
@@ -527,13 +538,15 @@ async function loadProducts() {
                 if (p.is_local) {
                     const stockInput = card.querySelector('.prod-stock');
                     const stockLines = stockInput ? stockInput.value.split('\n').map(l => l.trim()).filter(Boolean) : [];
+                    const infiniteVal = card.querySelector('.prod-infinite').checked;
 
                     const body = {
                         name: nameVal || p.name,
                         description: descVal || p.description,
                         price: priceVal ? parseFloat(priceVal) : p.price,
                         hidden: hiddenVal,
-                        addStockLines: stockLines
+                        addStockLines: stockLines,
+                        infinite_stock: infiniteVal
                     };
 
                     try {

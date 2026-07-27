@@ -211,9 +211,17 @@
                 <input type="number" id="local-modal-price" class="input-field" placeholder="e.g. 500" required>
             </div>
 
-            <div class="form-group mb-4">
+            <div class="form-group mb-3">
                 <label for="local-modal-stock">Initial Stock (One link/code per line)</label>
                 <textarea id="local-modal-stock" class="textarea-field" placeholder="Paste activation links/invite tokens here..." style="min-height: 100px;"></textarea>
+            </div>
+
+            <div class="flex-between mb-4">
+                <label>Infinite / Reusable Stock (Use single link for all buys)</label>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="local-modal-infinite">
+                    <span class="toggle-slider"></span>
+                </label>
             </div>
             
             <div class="modal-footer">

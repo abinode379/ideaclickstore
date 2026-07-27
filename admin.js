@@ -203,8 +203,9 @@ app.get('/api/products', ensureAuthAPI, async (req, res) => {
                 name: lp.name,
                 description: lp.description || '',
                 price_usdt: Number(lp.price) / (db.getConfig('usdt_to_npr_rate') || 250),
-                stock: lp.stock ? lp.stock.length : 0,
+                stock: lp.infinite_stock ? 9999 : (lp.stock ? lp.stock.length : 0),
                 is_local: true,
+                infinite_stock: lp.infinite_stock || false,
                 hidden: lp.hidden || false,
                 custom: {
                     name: lp.name,
@@ -233,18 +234,18 @@ app.get('/api/products', ensureAuthAPI, async (req, res) => {
 
 // Local product endpoints
 app.post('/api/products/local', ensureAuthAPI, (req, res) => {
-    const { name, description, price, stockLines } = req.body;
+    const { name, description, price, stockLines, infinite_stock } = req.body;
     if (!name || !price) return res.status(400).json({ error: 'Name and price are required' });
-    const product = db.addLocalProduct(name, description, price, stockLines);
+    const product = db.addLocalProduct(name, description, price, stockLines, infinite_stock);
     db.appendLog({ action: 'local_product_create', product_id: product.id, name });
     res.json({ success: true, product });
 });
 
 app.post('/api/products/local/:id', ensureAuthAPI, (req, res) => {
     const id = req.params.id;
-    const { name, description, price, hidden, stock, addStockLines } = req.body;
+    const { name, description, price, hidden, stock, addStockLines, infinite_stock } = req.body;
     try {
-        const product = db.updateLocalProduct(id, { name, description, price, hidden, stock, addStockLines });
+        const product = db.updateLocalProduct(id, { name, description, price, hidden, stock, addStockLines, infinite_stock });
         db.appendLog({ action: 'local_product_update', product_id: id, name });
         res.json({ success: true, product });
     } catch (err) {

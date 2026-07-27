@@ -295,7 +295,7 @@ function saveLocalProducts(products) {
     writeJSON(localProductsPath, products);
 }
 
-function addLocalProduct(name, description, price, stockLines = []) {
+function addLocalProduct(name, description, price, stockLines = [], infinite_stock = false) {
     const products = getLocalProducts();
     const id = 'local_' + Date.now();
     const newProduct = {
@@ -304,7 +304,8 @@ function addLocalProduct(name, description, price, stockLines = []) {
         description,
         price: Number(price),
         stock: Array.isArray(stockLines) ? stockLines.filter(Boolean) : [],
-        hidden: false
+        hidden: false,
+        infinite_stock: !!infinite_stock
     };
     products.push(newProduct);
     saveLocalProducts(products);
@@ -320,11 +321,18 @@ function updateLocalProduct(id, updates) {
     if (updates.description !== undefined) product.description = updates.description;
     if (updates.price !== undefined) product.price = Number(updates.price);
     if (updates.hidden !== undefined) product.hidden = !!updates.hidden;
+    if (updates.infinite_stock !== undefined) product.infinite_stock = !!updates.infinite_stock;
     
     if (Array.isArray(updates.stock)) {
         product.stock = updates.stock.filter(Boolean);
     } else if (updates.addStockLines && Array.isArray(updates.addStockLines)) {
-        product.stock = product.stock.concat(updates.addStockLines.filter(Boolean));
+        if (product.infinite_stock) {
+            if (updates.addStockLines.length > 0) {
+                product.stock = [updates.addStockLines[0]];
+            }
+        } else {
+            product.stock = product.stock.concat(updates.addStockLines.filter(Boolean));
+        }
     }
 
     saveLocalProducts(products);
@@ -341,6 +349,12 @@ function retrieveLocalStock(id, qty) {
     const products = getLocalProducts();
     const product = products.find(p => p.id === id);
     if (!product) throw new Error('Local product not found');
+
+    if (product.infinite_stock) {
+        const singleLink = product.stock[0] || 'No link set';
+        return Array(qty).fill(singleLink);
+    }
+
     if (product.stock.length < qty) throw new Error('Insufficient stock for local product');
 
     const items = product.stock.splice(0, qty);

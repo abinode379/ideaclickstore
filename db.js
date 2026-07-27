@@ -246,6 +246,7 @@ class SQLiteSessionStore extends session.Store {
         try {
             const sessions = readJSON(sessionsPath);
             const sess = sessions[sid];
+            if (typeof cb !== 'function') return;
             if (!sess) return cb(null, null);
             if (sess.expired < Math.floor(Date.now() / 1000)) {
                 this.destroy(sid, () => cb(null, null));
@@ -253,7 +254,7 @@ class SQLiteSessionStore extends session.Store {
                 cb(null, sess.sess);
             }
         } catch (err) {
-            cb(err);
+            if (typeof cb === 'function') cb(err);
         }
     }
 
@@ -266,9 +267,9 @@ class SQLiteSessionStore extends session.Store {
                 expired: Math.floor((Date.now() + maxAge) / 1000)
             };
             writeJSON(sessionsPath, sessions);
-            cb(null);
+            if (typeof cb === 'function') cb(null);
         } catch (err) {
-            cb(err);
+            if (typeof cb === 'function') cb(err);
         }
     }
 
@@ -277,9 +278,9 @@ class SQLiteSessionStore extends session.Store {
             const sessions = readJSON(sessionsPath);
             delete sessions[sid];
             writeJSON(sessionsPath, sessions);
-            cb(null);
+            if (typeof cb === 'function') cb(null);
         } catch (err) {
-            cb(err);
+            if (typeof cb === 'function') cb(err);
         }
     }
 }

@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IdeaClick Store - Admin Login</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/public/styles.css">
+</head>
+<body class="login-page">
+    <div class="login-container">
+        <div class="login-card glass-card">
+            <div class="branding">
+                <span class="shield-icon">🛡️</span>
+                <h1>IdeaClick Store</h1>
+                <p>Admin Control Panel</p>
+            </div>
+            
+            <div id="error-message" class="error-message" style="display: none;">Invalid password</div>
+            
+            <form action="/login" method="POST" class="login-form">
+                <div class="form-group">
+                    <label for="password">Admin Password</label>
+                    <input type="password" id="password" name="password" class="input-field" placeholder="Enter password" required>
+                </div>
+                <button type="submit" class="btn-primary w-100">Login to Dashboard</button>
+            </form>
+        </div>
+    </div>
+    <script>
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('error') === '1') {
+            document.getElementById('error-message').style.display = 'block';
+        }
+    </script>
+</body>
+</html>

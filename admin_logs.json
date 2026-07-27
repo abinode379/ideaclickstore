@@ -1,0 +1,10 @@
+[
+  {
+    "action": "balance_adjust",
+    "targetUser_id": "1416102996671991939",
+    "amount": 100,
+    "reason": "yy",
+    "newBalance": 110,
+    "timestamp": "2026-07-27T10:07:51.230Z"
+  }
+]

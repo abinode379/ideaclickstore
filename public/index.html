@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IdeaClick Admin</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/public/styles.css">
+</head>
+<body>
+    <div class="sidebar-overlay"></div>
+    
+    <nav class="sidebar">
+        <div class="sidebar-header">
+            <span class="shield-icon">🛡️</span>
+            <h2>IdeaClick</h2>
+        </div>
+        <ul class="sidebar-menu">
+            <li class="sidebar-item active" data-target="tab-dashboard">
+                <span>📊</span> Dashboard
+            </li>
+            <li class="sidebar-item" data-target="tab-products">
+                <span>📦</span> Products
+            </li>
+            <li class="sidebar-item" data-target="tab-users">
+                <span>👥</span> Users
+            </li>
+            <li class="sidebar-item" data-target="tab-logs">
+                <span>📋</span> Logs
+            </li>
+            <li class="sidebar-item logout-item">
+                <a href="/logout"><span>🚪</span> Logout</a>
+            </li>
+        </ul>
+    </nav>
+
+    <div class="main-wrapper">
+        <header class="header">
+            <button class="hamburger" id="hamburger-btn">
+                <span></span>
+                <span></span>
+                <span></span>
+            </button>
+            <div class="header-title">IdeaClick Admin</div>
+            <div class="status-indicator">
+                <div class="status-dot pulse"></div>
+                <span class="status-text">System Online</span>
+            </div>
+        </header>
+
+        <main class="main-content">
+            <!-- Dashboard Tab -->
+            <div id="tab-dashboard" class="tab-content active">
+                <h2 class="section-title">Overview</h2>
+                <div class="stats-row">
+                    <div class="stat-card glass-card">
+                        <h3>Total Users</h3>
+                        <div class="stat-value" id="stat-users">-</div>
+                    </div>
+                    <div class="stat-card glass-card">
+                        <h3>Total Balance (NPR)</h3>
+                        <div class="stat-value" id="stat-balance">-</div>
+                    </div>
+                    <div class="stat-card glass-card">
+                        <h3>Total Products</h3>
+                        <div class="stat-value" id="stat-products">-</div>
+                    </div>
+                </div>
+
+                <div class="settings-section glass-card mt-4">
+                    <h3>System Settings</h3>
+                    <div class="form-group mt-3">
+                        <label for="setting-rate">USDT to NPR Rate</label>
+                        <input type="number" id="setting-rate" class="input-field" step="0.01">
+                    </div>
+                    <div class="form-group mt-3">
+                        <label for="setting-channel">Notification Channel ID</label>
+                        <input type="text" id="setting-channel" class="input-field">
+                    </div>
+                    <button class="btn-primary mt-3" id="save-settings-btn">Save Settings</button>
+                </div>
+            </div>
+
+            <!-- Products Tab -->
+            <div id="tab-products" class="tab-content">
+                <h2 class="section-title">Manage Products</h2>
+                <div id="products-grid" class="product-grid mt-4">
+                    <!-- Populated by JS -->
+                </div>
+            </div>
+
+            <!-- Users Tab -->
+            <div id="tab-users" class="tab-content">
+                <h2 class="section-title">Users Directory</h2>
+                <div class="search-container mt-4 mb-4">
+                    <div class="search-bar">
+                        <span class="search-icon">🔍</span>
+                        <input type="text" id="user-search" class="input-field" placeholder="Search by Discord ID or Username...">
+                    </div>
+                </div>
+                <div id="users-list" class="users-list">
+                    <!-- Populated by JS -->
+                </div>
+            </div>
+
+            <!-- Logs Tab -->
+            <div id="tab-logs" class="tab-content">
+                <div class="logs-header flex-between mb-4">
+                    <h2 class="section-title">System Logs</h2>
+                    <div class="filter-buttons">
+                        <button class="btn-secondary filter-btn active" data-filter="all">All</button>
+                        <button class="btn-secondary filter-btn" data-filter="balance_adjust">Balance</button>
+                        <button class="btn-secondary filter-btn" data-filter="product_update">Products</button>
+                        <button class="btn-secondary filter-btn" data-filter="settings_update">Settings</button>
+                    </div>
+                </div>
+                <div id="logs-feed" class="logs-feed glass-card">
+                    <!-- Populated by JS -->
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Balance Adjustment Modal -->
+    <div class="modal-overlay" id="balance-modal-overlay"></div>
+    <div class="modal glass-card" id="balance-modal">
+        <div class="modal-header">
+            <h3>Adjust Balance</h3>
+            <button class="close-modal" id="close-modal-btn">&times;</button>
+        </div>
+        <div class="modal-body">
+            <p class="mb-3">User: <span id="modal-username" class="highlight-text"></span></p>
+            <p class="mb-3">Current Balance: <span id="modal-current-balance" class="highlight-text"></span> NPR</p>
+            
+            <input type="hidden" id="modal-user-id">
+            
+            <div class="form-group mb-3">
+                <label for="modal-amount">Amount (Use negative for deduction)</label>
+                <input type="number" id="modal-amount" class="input-field" placeholder="e.g. 500 or -200" required>
+            </div>
+            
+            <div class="form-group mb-4">
+                <label for="modal-reason">Reason</label>
+                <textarea id="modal-reason" class="textarea-field" placeholder="Reason for adjustment" required></textarea>
+            </div>
+            
+            <div class="modal-footer">
+                <button class="btn-secondary" id="cancel-modal-btn">Cancel</button>
+                <button class="btn-primary" id="confirm-balance-btn">Confirm Adjustment</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/public/app.js"></script>
+</body>
+</html>

@@ -167,17 +167,20 @@ app.post('/api/settings', ensureAuthAPI, (req, res) => {
 
 app.get('/api/products', ensureAuthAPI, async (req, res) => {
     try {
-        const prodRes = await axios.get('https://tunvnmmo.duckdns.org/api/products', {
-            headers: { 'X-API-Key': process.env.TUNVNMMO_API_KEY }
-        });
-        
         let products = [];
-        if (Array.isArray(prodRes.data)) {
-            products = prodRes.data;
-        } else if (prodRes.data && Array.isArray(prodRes.data.products)) {
-            products = prodRes.data.products;
-        } else if (prodRes.data && Array.isArray(prodRes.data.data)) {
-            products = prodRes.data.data;
+        try {
+            const prodRes = await axios.get('https://tunvnmmo.duckdns.org/api/products', {
+                headers: { 'X-API-Key': process.env.TUNVNMMO_API_KEY }
+            });
+            if (Array.isArray(prodRes.data)) {
+                products = prodRes.data;
+            } else if (prodRes.data && Array.isArray(prodRes.data.products)) {
+                products = prodRes.data.products;
+            } else if (prodRes.data && Array.isArray(prodRes.data.data)) {
+                products = prodRes.data.data;
+            }
+        } catch (apiErr) {
+            log.error({ error: apiErr.message }, 'Failed to fetch TunvnMMO products, using empty list');
         }
 
         const customProducts = db.getConfig('custom_products') || {};
@@ -190,6 +193,24 @@ app.get('/api/products', ensureAuthAPI, async (req, res) => {
                 custom: customProducts[String(p.id)] || {},
                 hidden: hiddenProducts.includes(String(p.id))
             };
+        });
+
+        // Merge local products
+        const localProducts = db.getLocalProducts();
+        localProducts.forEach(lp => {
+            enriched.push({
+                id: lp.id,
+                name: lp.name,
+                description: lp.description || '',
+                price_usdt: Number(lp.price) / (db.getConfig('usdt_to_npr_rate') || 250),
+                stock: lp.stock ? lp.stock.length : 0,
+                is_local: true,
+                hidden: lp.hidden || false,
+                custom: {
+                    name: lp.name,
+                    price: lp.price
+                }
+            });
         });
         
         if (productOrder.length > 0) {
@@ -205,9 +226,37 @@ app.get('/api/products', ensureAuthAPI, async (req, res) => {
         
         res.json(enriched);
     } catch (err) {
-        log.error({ error: err.message, stack: err.stack }, 'Failed to fetch products from TunvnMMO API');
+        log.error({ error: err.message, stack: err.stack }, 'Failed to fetch products');
         res.status(500).json({ error: 'Failed to fetch products' });
     }
+});
+
+// Local product endpoints
+app.post('/api/products/local', ensureAuthAPI, (req, res) => {
+    const { name, description, price, stockLines } = req.body;
+    if (!name || !price) return res.status(400).json({ error: 'Name and price are required' });
+    const product = db.addLocalProduct(name, description, price, stockLines);
+    db.appendLog({ action: 'local_product_create', product_id: product.id, name });
+    res.json({ success: true, product });
+});
+
+app.post('/api/products/local/:id', ensureAuthAPI, (req, res) => {
+    const id = req.params.id;
+    const { name, description, price, hidden, stock, addStockLines } = req.body;
+    try {
+        const product = db.updateLocalProduct(id, { name, description, price, hidden, stock, addStockLines });
+        db.appendLog({ action: 'local_product_update', product_id: id, name });
+        res.json({ success: true, product });
+    } catch (err) {
+        res.status(400).json({ error: err.message });
+    }
+});
+
+app.delete('/api/products/local/:id', ensureAuthAPI, (req, res) => {
+    const id = req.params.id;
+    db.deleteLocalProduct(id);
+    db.appendLog({ action: 'local_product_delete', product_id: id });
+    res.json({ success: true });
 });
 
 app.post('/api/products/order', ensureAuthAPI, (req, res) => {

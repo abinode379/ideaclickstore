@@ -94,6 +94,13 @@ function sortProducts(products) {
 }
 
 function getProductData(product) {
+    if (product.is_local) {
+        return {
+            name: product.name,
+            description: product.description || 'No description.',
+            price: ((product.price_usdt || 0) * (db.getConfig('usdt_to_npr_rate') || 250)).toFixed(2)
+        };
+    }
     const customProducts = db.getConfig('custom_products') || {};
     const custom = customProducts[product.id] || customProducts[String(product.id)] || {};
     return {
@@ -101,6 +108,40 @@ function getProductData(product) {
         description: custom.description || product.description || 'No description.',
         price: custom.price || ((product.price_usdt || 0) * (db.getConfig('usdt_to_npr_rate') || 250)).toFixed(2)
     };
+}
+
+async function getMergedProducts() {
+    try {
+        const res = await tunvnmmoAPI.get('/products');
+        const apiProducts = extractArray(res.data);
+        const localProducts = db.getLocalProducts();
+        
+        const formattedLocals = localProducts.map(p => ({
+            id: p.id,
+            name: p.name,
+            description: p.description || '',
+            price_usdt: Number(p.price) / (db.getConfig('usdt_to_npr_rate') || 250),
+            stock: p.stock ? p.stock.length : 0,
+            is_local: true
+        }));
+        
+        return [...apiProducts, ...formattedLocals];
+    } catch (e) {
+        log.error({ err: e.message }, 'Failed to fetch merged products');
+        try {
+            const localProducts = db.getLocalProducts();
+            return localProducts.map(p => ({
+                id: p.id,
+                name: p.name,
+                description: p.description || '',
+                price_usdt: Number(p.price) / (db.getConfig('usdt_to_npr_rate') || 250),
+                stock: p.stock ? p.stock.length : 0,
+                is_local: true
+            }));
+        } catch (localErr) {
+            return [];
+        }
+    }
 }
 
 function getProductEmoji(name) {
@@ -128,8 +169,7 @@ async function updateAvailableProductsChannel() {
         const channel = client.channels.cache.get(channelId);
         if (!channel) return;
 
-        const productsResponse = await tunvnmmoAPI.get('/products');
-        const allProducts = extractArray(productsResponse.data);
+        const allProducts = await getMergedProducts();
         const hiddenProducts = db.getConfig('hidden_products') || [];
         
         let products = allProducts.filter(p => !hiddenProducts.includes(String(p.id)));
@@ -169,8 +209,7 @@ async function updateAvailableProductsChannel() {
 
 async function trackStockChanges() {
     try {
-        const res = await tunvnmmoAPI.get('/products');
-        const products = extractArray(res.data);
+        const products = await getMergedProducts();
         const channelId = db.getConfig('notification_channel_id');
         if (!channelId) return;
         const channel = client.channels.cache.get(channelId);
@@ -598,8 +637,7 @@ Join our support channel or open a ticket!
         }
 
         if (interaction.isButton() && interaction.customId === 'nav_shop') {
-            const productsResponse = await tunvnmmoAPI.get('/products');
-            const allProducts = extractArray(productsResponse.data);
+            const allProducts = await getMergedProducts();
             const hiddenProducts = db.getConfig('hidden_products') || [];
             const products = sortProducts(allProducts.filter(p => !hiddenProducts.includes(String(p.id))));
             if (products.length === 0) return await interaction.update({ content: '📭 No products available.', components: [], ...ephemeral });
@@ -629,8 +667,7 @@ Join our support channel or open a ticket!
         if (interaction.isButton() && interaction.customId.startsWith('shop_page_')) {
             const page = parseInt(interaction.customId.replace('shop_page_', ''));
             if (isNaN(page)) return;
-            const productsResponse = await tunvnmmoAPI.get('/products');
-            const allProducts = extractArray(productsResponse.data);
+            const allProducts = await getMergedProducts();
             const hiddenProducts = db.getConfig('hidden_products') || [];
             const products = sortProducts(allProducts.filter(p => !hiddenProducts.includes(String(p.id))));
             await renderShopPage(interaction, products, page);
@@ -644,9 +681,9 @@ Join our support channel or open a ticket!
 
         if (interaction.isButton() && interaction.customId.startsWith('view_')) {
             const productId = interaction.customId.replace('view_', '');
-            const productsResponse = await tunvnmmoAPI.get('/products');
-            const product = extractArray(productsResponse.data).find(p => String(p.id) === String(productId));
-            if (!product) return await interaction.reply({ content: ' Not found', ...ephemeral });
+            const allProducts = await getMergedProducts();
+            const product = allProducts.find(p => String(p.id) === String(productId));
+            if (!product) return await interaction.reply({ content: '❌ Not found', ...ephemeral });
             const pData = getProductData(product);
             const embed = new EmbedBuilder().setTitle(`📦 ${pData.name}`).setDescription(pData.description).addFields({ name: ' Price', value: `${pData.price} NPR`, inline: true }, { name: '📦 Stock', value: `${product.stock ?? 0}`, inline: true }).setColor((product.stock ?? 0) > 0 ? 0x00FF00 : 0xFF0000);
             const row = new ActionRowBuilder().addComponents(
@@ -658,8 +695,8 @@ Join our support channel or open a ticket!
 
         if (interaction.isButton() && interaction.customId.startsWith('buy_')) {
             const productId = interaction.customId.replace('buy_', '');
-            const productsResponse = await tunvnmmoAPI.get('/products');
-            const product = extractArray(productsResponse.data).find(p => String(p.id) === String(productId));
+            const allProducts = await getMergedProducts();
+            const product = allProducts.find(p => String(p.id) === String(productId));
             if (!product) return await interaction.reply({ content: '❌ Not found', ...ephemeral });
             const pData = getProductData(product);
             const modal = new ModalBuilder().setCustomId(`purchase_${productId}`).setTitle(`Buy: ${pData.name.substring(0, 30)}`).addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('qty').setLabel('Quantity').setStyle(TextInputStyle.Short).setPlaceholder(`Max: ${product.stock}`).setRequired(true)));
@@ -672,8 +709,8 @@ Join our support channel or open a ticket!
             const quantity = parseInt(parts[2]);
             await interaction.deferUpdate();
             try {
-                const productsRes = await tunvnmmoAPI.get('/products');
-                const product = extractArray(productsRes.data).find(p => String(p.id) === String(productId));
+                const allProducts = await getMergedProducts();
+                const product = allProducts.find(p => String(p.id) === String(productId));
                 if (!product) throw new Error('Product not found');
                 const pData = getProductData(product);
                 const totalCost = Number(pData.price) * quantity;
@@ -681,20 +718,31 @@ Join our support channel or open a ticket!
                 db.ensureUser(interaction.user.id, interaction.user.tag);
                 const txResult = db.purchaseTransaction(interaction.user.id, pData.name, quantity, totalCost);
                 
-                let buyData;
-                try {
-                    const buyRes = await tunvnmmoAPI.post('/buy', { product_id: parseInt(productId), quantity, currency: 'usdt' });
-                    buyData = buyRes.data;
-                    if (buyData.success === false || buyData.error) throw new Error(buyData.message || 'API returned failure');
-                } catch (apiError) {
-                    db.refundUser(interaction.user.id, totalCost);
-                    log.warn({ userId: interaction.user.id, product: pData.name, totalCost, error: apiError.message }, 'Purchase API failed, balance refunded');
-                    throw new Error(`Purchase failed, your ${totalCost} NPR has been refunded. (${apiError.message})`);
+                let details = '';
+                if (product.is_local) {
+                    try {
+                        const items = db.retrieveLocalStock(productId, quantity);
+                        details = items.join('\n');
+                    } catch (localErr) {
+                        db.refundUser(interaction.user.id, totalCost);
+                        log.warn({ userId: interaction.user.id, product: pData.name, totalCost, error: localErr.message }, 'Local purchase failed, balance refunded');
+                        throw new Error(`Purchase failed, your ${totalCost} NPR has been refunded. (${localErr.message})`);
+                    }
+                } else {
+                    let buyData;
+                    try {
+                        const buyRes = await tunvnmmoAPI.post('/buy', { product_id: parseInt(productId), quantity, currency: 'usdt' });
+                        buyData = buyRes.data;
+                        if (buyData.success === false || buyData.error) throw new Error(buyData.message || 'API returned failure');
+                    } catch (apiError) {
+                        db.refundUser(interaction.user.id, totalCost);
+                        log.warn({ userId: interaction.user.id, product: pData.name, totalCost, error: apiError.message }, 'Purchase API failed, balance refunded');
+                        throw new Error(`Purchase failed, your ${totalCost} NPR has been refunded. (${apiError.message})`);
+                    }
+                    details = buyData.account_details || (buyData.items ? buyData.items.join('\n') : 'No details');
                 }
                 
                 log.info({ userId: interaction.user.id, product: pData.name, quantity, totalCost, pointsEarned: txResult.pointsEarned }, 'Purchase completed successfully');
-                let details = buyData.account_details || (buyData.items ? buyData.items.join('\n') : 'No details');
-                
                 const formattedDetails = `\`\`\`text\n${details}\n\`\`\``;
                 
                 const embed = new EmbedBuilder()

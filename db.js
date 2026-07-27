@@ -285,6 +285,69 @@ class SQLiteSessionStore extends session.Store {
     }
 }
 
+const localProductsPath = path.join(__dirname, 'local_products.json');
+
+function getLocalProducts() {
+    return readJSON(localProductsPath, []);
+}
+
+function saveLocalProducts(products) {
+    writeJSON(localProductsPath, products);
+}
+
+function addLocalProduct(name, description, price, stockLines = []) {
+    const products = getLocalProducts();
+    const id = 'local_' + Date.now();
+    const newProduct = {
+        id,
+        name,
+        description,
+        price: Number(price),
+        stock: Array.isArray(stockLines) ? stockLines.filter(Boolean) : [],
+        hidden: false
+    };
+    products.push(newProduct);
+    saveLocalProducts(products);
+    return newProduct;
+}
+
+function updateLocalProduct(id, updates) {
+    const products = getLocalProducts();
+    const product = products.find(p => p.id === id);
+    if (!product) throw new Error('Local product not found');
+
+    if (updates.name !== undefined) product.name = updates.name;
+    if (updates.description !== undefined) product.description = updates.description;
+    if (updates.price !== undefined) product.price = Number(updates.price);
+    if (updates.hidden !== undefined) product.hidden = !!updates.hidden;
+    
+    if (Array.isArray(updates.stock)) {
+        product.stock = updates.stock.filter(Boolean);
+    } else if (updates.addStockLines && Array.isArray(updates.addStockLines)) {
+        product.stock = product.stock.concat(updates.addStockLines.filter(Boolean));
+    }
+
+    saveLocalProducts(products);
+    return product;
+}
+
+function deleteLocalProduct(id) {
+    let products = getLocalProducts();
+    products = products.filter(p => p.id !== id);
+    saveLocalProducts(products);
+}
+
+function retrieveLocalStock(id, qty) {
+    const products = getLocalProducts();
+    const product = products.find(p => p.id === id);
+    if (!product) throw new Error('Local product not found');
+    if (product.stock.length < qty) throw new Error('Insufficient stock for local product');
+
+    const items = product.stock.splice(0, qty);
+    saveLocalProducts(products);
+    return items;
+}
+
 module.exports = {
     getUser,
     ensureUser,
@@ -301,5 +364,11 @@ module.exports = {
     getAllConfig,
     appendLog,
     getLogs,
-    SQLiteSessionStore // keeps the same export name to prevent breaking admin.js
+    SQLiteSessionStore, // keeps the same export name to prevent breaking admin.js
+    getLocalProducts,
+    saveLocalProducts,
+    addLocalProduct,
+    updateLocalProduct,
+    deleteLocalProduct,
+    retrieveLocalStock
 };

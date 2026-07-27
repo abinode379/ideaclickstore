@@ -146,6 +146,72 @@ function initModals() {
             }
         });
     }
+
+    // Setup Add Local Product Modal
+    const addLocalBtn = document.getElementById('add-local-product-btn');
+    const localOverlay = document.getElementById('local-product-modal-overlay');
+    const localModal = document.getElementById('local-product-modal');
+    const closeLocalBtns = [document.getElementById('close-local-modal-btn'), document.getElementById('cancel-local-modal-btn')];
+    const confirmLocalBtn = document.getElementById('confirm-local-product-btn');
+
+    function openLocalModal() {
+        document.getElementById('local-modal-name').value = '';
+        document.getElementById('local-modal-desc').value = '';
+        document.getElementById('local-modal-price').value = '';
+        document.getElementById('local-modal-stock').value = '';
+        if (localOverlay) {
+            localOverlay.style.display = 'block';
+            localOverlay.offsetHeight;
+            localOverlay.classList.add('show');
+        }
+        if (localModal) {
+            localModal.style.display = 'block';
+            localModal.offsetHeight;
+            localModal.classList.add('show');
+        }
+    }
+
+    function closeLocalModal() {
+        if (localModal) localModal.classList.remove('show');
+        if (localOverlay) localOverlay.classList.remove('show');
+        setTimeout(() => {
+            if (localModal) localModal.style.display = 'none';
+            if (localOverlay) localOverlay.style.display = 'none';
+        }, 300);
+    }
+
+    if (addLocalBtn) addLocalBtn.onclick = openLocalModal;
+    closeLocalBtns.forEach(btn => { if (btn) btn.onclick = closeLocalModal; });
+    if (localOverlay) localOverlay.onclick = closeLocalModal;
+
+    if (confirmLocalBtn) {
+        confirmLocalBtn.onclick = async () => {
+            const name = document.getElementById('local-modal-name').value.trim();
+            const desc = document.getElementById('local-modal-desc').value.trim();
+            const price = parseFloat(document.getElementById('local-modal-price').value);
+            const stockVal = document.getElementById('local-modal-stock').value;
+            const stockLines = stockVal.split('\n').map(l => l.trim()).filter(Boolean);
+
+            if (!name || isNaN(price)) {
+                showToast('Product name and price are required', 'error');
+                return;
+            }
+
+            try {
+                const res = await fetch('/api/products/local', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, description: desc, price, stockLines })
+                });
+                if (!res.ok) throw new Error('Failed to create local product');
+                showToast('Local product created successfully', 'success');
+                closeLocalModal();
+                loadProducts();
+            } catch (err) {
+                showToast(err.message, 'error');
+            }
+        };
+    }
 }
 
 function openBalanceModal(userId, username, currentBalance) {
@@ -393,20 +459,53 @@ async function loadProducts() {
                     </div>
                 </div>
 
-                <div class="form-group mt-3">
-                    <label>Custom Name</label>
-                    <input type="text" class="input-field prod-name" value="${custom.name || ''}" placeholder="${p.name || 'Product name'}">
+            const isLocal = p.is_local === true;
+            
+            let stockHtml = '';
+            if (isLocal) {
+                stockHtml = `
+                    <div class="form-group mt-3">
+                        <label>Add Stock (One link/code per line)</label>
+                        <textarea class="textarea-field prod-stock" style="min-height: 80px;" placeholder="Paste new stock lines here to ADD to current stock..."></textarea>
+                        <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 4px;">Leaving this empty keeps current stock intact.</div>
+                    </div>
+                `;
+            }
+
+            card.innerHTML = `
+                <div class="product-header">
+                    <div>
+                        <div class="product-id">ID: ${p.id} ${isLocal ? '<span class="badge" style="background-color:#e0e7ff; color:#4f46e5; border-color:#c7d2fe; margin-left: 4px;">Local</span>' : ''}</div>
+                        <div class="product-name">${displayName}</div>
+                    </div>
+                    <div style="display:flex; flex-direction:column; align-items:flex-end; gap:6px;">
+                        <div style="display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end;">
+                            ${stockBadge}
+                            ${hiddenBadge}
+                        </div>
+                        <div style="display:flex; gap:4px;">
+                            <button class="btn-secondary move-up-btn" style="padding: 4px 8px; font-size: 0.75rem;" title="Move Up">▲</button>
+                            <button class="btn-secondary move-down-btn" style="padding: 4px 8px; font-size: 0.75rem;" title="Move Down">▼</button>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="form-group mt-3">
-                    <label>Custom Description</label>
-                    <textarea class="textarea-field prod-desc" placeholder="${p.description || 'No description'}">${custom.description || ''}</textarea>
+                    <label>${isLocal ? 'Product Name' : 'Custom Name'}</label>
+                    <input type="text" class="input-field prod-name" value="${isLocal ? p.name : (custom.name || '')}" placeholder="${isLocal ? '' : (p.name || 'Product name')}">
                 </div>
 
                 <div class="form-group mt-3">
-                    <label>Custom Price (NPR)</label>
-                    <input type="number" class="input-field prod-price" value="${custom.price || ''}" step="0.01" placeholder="Auto from USDT">
+                    <label>${isLocal ? 'Product Description' : 'Custom Description'}</label>
+                    <textarea class="textarea-field prod-desc" placeholder="Product description">${isLocal ? (p.description || '') : (custom.description || '')}</textarea>
                 </div>
+
+                <div class="form-group mt-3">
+                    <label>${isLocal ? 'Price (NPR)' : 'Custom Price (NPR)'}</label>
+                    <input type="number" class="input-field prod-price" value="${isLocal ? (custom.price || '') : (custom.price || '')}" step="0.01" placeholder="${isLocal ? 'Price in NPR' : 'Auto from USDT'}">
+                </div>
+
+                ${stockHtml}
 
                 <div class="flex-between mt-3 mb-3">
                     <label>Hide Product</label>
@@ -443,27 +542,73 @@ async function loadProducts() {
                 const priceVal = card.querySelector('.prod-price').value;
                 const hiddenVal = card.querySelector('.prod-hidden').checked;
 
-                const body = {
-                    product_id: String(p.id),
-                    name: nameVal || null,
-                    description: descVal || null,
-                    price: priceVal ? parseFloat(priceVal) : null,
-                    hidden: hiddenVal
-                };
+                if (p.is_local) {
+                    const stockInput = card.querySelector('.prod-stock');
+                    const stockLines = stockInput ? stockInput.value.split('\n').map(l => l.trim()).filter(Boolean) : [];
 
-                try {
-                    const res = await fetch('/api/product', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(body)
-                    });
-                    if (!res.ok) throw new Error('Failed to update product');
-                    showToast('Product updated', 'success');
-                    loadProducts();
-                } catch (err) {
-                    showToast(err.message, 'error');
+                    const body = {
+                        name: nameVal || p.name,
+                        description: descVal || p.description,
+                        price: priceVal ? parseFloat(priceVal) : p.price,
+                        hidden: hiddenVal,
+                        addStockLines: stockLines
+                    };
+
+                    try {
+                        const res = await fetch(`/api/products/local/${p.id}`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(body)
+                        });
+                        if (!res.ok) throw new Error('Failed to update local product');
+                        showToast('Local product updated', 'success');
+                        loadProducts();
+                    } catch (err) {
+                        showToast(err.message, 'error');
+                    }
+                } else {
+                    const body = {
+                        product_id: String(p.id),
+                        name: nameVal || null,
+                        description: descVal || null,
+                        price: priceVal ? parseFloat(priceVal) : null,
+                        hidden: hiddenVal
+                    };
+
+                    try {
+                        const res = await fetch('/api/product', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(body)
+                        });
+                        if (!res.ok) throw new Error('Failed to update product');
+                        showToast('Product updated', 'success');
+                        loadProducts();
+                    } catch (err) {
+                        showToast(err.message, 'error');
+                    }
                 }
             });
+
+            if (p.is_local) {
+                const delBtn = document.createElement('button');
+                delBtn.className = 'btn-secondary w-100 mt-2';
+                delBtn.style.color = '#ef4444';
+                delBtn.style.borderColor = '#fee2e2';
+                delBtn.innerText = 'Delete Product';
+                delBtn.onclick = async () => {
+                    if (!confirm('Are you sure you want to delete this product?')) return;
+                    try {
+                        const res = await fetch(`/api/products/local/${p.id}`, { method: 'DELETE' });
+                        if (!res.ok) throw new Error('Failed to delete product');
+                        showToast('Product deleted', 'success');
+                        loadProducts();
+                    } catch (err) {
+                        showToast(err.message, 'error');
+                    }
+                };
+                card.appendChild(delBtn);
+            }
 
             grid.appendChild(card);
         });

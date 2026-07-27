@@ -117,7 +117,10 @@
 
             <!-- Products Tab -->
             <div id="tab-products" class="tab-content">
-                <h2 class="section-title">Manage Products</h2>
+                <div class="flex-between">
+                    <h2 class="section-title">Manage Products</h2>
+                    <button class="btn-primary" id="add-local-product-btn">Add Local Product</button>
+                </div>
                 <div id="products-grid" class="product-grid mt-4">
                     <!-- Populated by JS -->
                 </div>
@@ -181,6 +184,41 @@
             <div class="modal-footer">
                 <button class="btn-secondary" id="cancel-modal-btn">Cancel</button>
                 <button class="btn-primary" id="confirm-balance-btn">Confirm Adjustment</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Local Product Modal -->
+    <div class="modal-overlay" id="local-product-modal-overlay"></div>
+    <div class="modal glass-card" id="local-product-modal">
+        <div class="modal-header">
+            <h3>Add Local Product</h3>
+            <button class="close-modal" id="close-local-modal-btn">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-group mb-3">
+                <label for="local-modal-name">Product Name</label>
+                <input type="text" id="local-modal-name" class="input-field" placeholder="e.g. Canva Pro 3 Year" required>
+            </div>
+            
+            <div class="form-group mb-3">
+                <label for="local-modal-desc">Description</label>
+                <textarea id="local-modal-desc" class="textarea-field" placeholder="Description of the product" required></textarea>
+            </div>
+
+            <div class="form-group mb-3">
+                <label for="local-modal-price">Price (NPR)</label>
+                <input type="number" id="local-modal-price" class="input-field" placeholder="e.g. 500" required>
+            </div>
+
+            <div class="form-group mb-4">
+                <label for="local-modal-stock">Initial Stock (One link/code per line)</label>
+                <textarea id="local-modal-stock" class="textarea-field" placeholder="Paste activation links/invite tokens here..." style="min-height: 100px;"></textarea>
+            </div>
+            
+            <div class="modal-footer">
+                <button class="btn-secondary" id="cancel-local-modal-btn">Cancel</button>
+                <button class="btn-primary" id="confirm-local-product-btn">Create Product</button>
             </div>
         </div>
     </div>

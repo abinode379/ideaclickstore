@@ -97,5 +97,57 @@
         "live_sales_channel_id": "1531261735040847993"
       }
     }
+  },
+  {
+    "id": 8,
+    "timestamp": "2026-07-27T14:46:11.596Z",
+    "action": "settings_update",
+    "details": {
+      "details": {
+        "usdt_to_npr_rate": 250,
+        "notification_channel_id": "1530830309875126343",
+        "live_sales_channel_id": "1531261735040847993",
+        "available_products_channel_id": "1531311713096568923"
+      }
+    }
+  },
+  {
+    "id": 9,
+    "timestamp": "2026-07-27T14:46:49.129Z",
+    "action": "settings_update",
+    "details": {
+      "details": {
+        "usdt_to_npr_rate": 250,
+        "notification_channel_id": "1530830309875126343",
+        "live_sales_channel_id": "1531261735040847993",
+        "available_products_channel_id": "1531311713096568923"
+      }
+    }
+  },
+  {
+    "id": 10,
+    "timestamp": "2026-07-27T14:54:55.280Z",
+    "action": "balance_adjust",
+    "details": {
+      "targetUser": "1232581928763392044",
+      "username": "1221dfwsfsf",
+      "amount": 100,
+      "reason": "dad",
+      "newBalance": 1181.8
+    }
+  },
+  {
+    "id": 11,
+    "timestamp": "2026-07-27T14:56:19.858Z",
+    "action": "product_update",
+    "details": {
+      "product_id": "44",
+      "changes": {
+        "custom": {
+          "name": "Capcut Pro Team 7D"
+        },
+        "hidden": false
+      }
+    }
   }
 ]

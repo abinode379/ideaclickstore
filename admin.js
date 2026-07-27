@@ -135,15 +135,17 @@ app.get('/api/settings', ensureAuthAPI, (req, res) => {
     res.json({
         usdt_to_npr_rate: db.getConfig('usdt_to_npr_rate'),
         notification_channel_id: db.getConfig('notification_channel_id'),
-        live_sales_channel_id: db.getConfig('live_sales_channel_id')
+        live_sales_channel_id: db.getConfig('live_sales_channel_id'),
+        available_products_channel_id: db.getConfig('available_products_channel_id')
     });
 });
 
 app.post('/api/settings', ensureAuthAPI, (req, res) => {
-    const { usdt_to_npr_rate, notification_channel_id, live_sales_channel_id } = req.body;
+    const { usdt_to_npr_rate, notification_channel_id, live_sales_channel_id, available_products_channel_id } = req.body;
     if (usdt_to_npr_rate !== undefined) db.setConfig('usdt_to_npr_rate', usdt_to_npr_rate);
     if (notification_channel_id !== undefined) db.setConfig('notification_channel_id', notification_channel_id);
     if (live_sales_channel_id !== undefined) db.setConfig('live_sales_channel_id', live_sales_channel_id);
+    if (available_products_channel_id !== undefined) db.setConfig('available_products_channel_id', available_products_channel_id);
     
     db.appendLog({ action: 'settings_update', details: req.body });
     
@@ -154,7 +156,8 @@ app.post('/api/settings', ensureAuthAPI, (req, res) => {
             { name: 'Admin User', value: req.session?.admin?.username || 'System', inline: true },
             { name: 'Exchange Rate', value: usdt_to_npr_rate ? `\` ${usdt_to_npr_rate} NPR \`` : 'N/A', inline: true },
             { name: 'Notification Channel', value: notification_channel_id ? `\` ${notification_channel_id} \`` : 'N/A', inline: true },
-            { name: 'Live Sales Channel', value: live_sales_channel_id ? `\` ${live_sales_channel_id} \`` : 'N/A', inline: true }
+            { name: 'Live Sales Channel', value: live_sales_channel_id ? `\` ${live_sales_channel_id} \`` : 'N/A', inline: true },
+            { name: 'Catalog Channel', value: available_products_channel_id ? `\` ${available_products_channel_id} \`` : 'N/A', inline: true }
         ],
         timestamp: new Date().toISOString()
     });

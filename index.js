@@ -103,6 +103,51 @@ function getProductData(product) {
     };
 }
 
+async function updateAvailableProductsChannel() {
+    try {
+        const channelId = db.getConfig('available_products_channel_id');
+        if (!channelId) return;
+        const channel = client.channels.cache.get(channelId);
+        if (!channel) return;
+
+        const productsResponse = await tunvnmmoAPI.get('/products');
+        const allProducts = extractArray(productsResponse.data);
+        const hiddenProducts = db.getConfig('hidden_products') || [];
+        
+        let products = allProducts.filter(p => !hiddenProducts.includes(String(p.id)));
+        products = sortProducts(products);
+
+        let descriptionText = `🇳🇵 **IdeaClick Live Product Catalog**\n\n`;
+        if (products.length === 0) {
+            descriptionText += `📭 *No products currently available.*`;
+        } else {
+            products.forEach(product => {
+                const pData = getProductData(product);
+                const bar = getProgressBar(product.stock ?? 0);
+                descriptionText += `🔹 **${pData.name}** - ${pData.price} NPR\n${bar}\n\n`;
+            });
+        }
+
+        const embed = new EmbedBuilder()
+            .setTitle('🏪 Live Product Catalog')
+            .setDescription(descriptionText)
+            .setColor(0x8b5cf6)
+            .setTimestamp();
+
+        const messages = await channel.messages.fetch({ limit: 50 });
+        const botMessage = messages.find(m => m.author.id === client.user.id);
+
+        if (botMessage) {
+            await botMessage.edit({ embeds: [embed], components: [] });
+        } else {
+            await channel.send({ embeds: [embed] });
+        }
+        log.info('Live catalog channel updated successfully.');
+    } catch (e) {
+        log.error({ err: e.message }, 'Failed to update live catalog channel');
+    }
+}
+
 async function trackStockChanges() {
     try {
         const res = await tunvnmmoAPI.get('/products');
@@ -130,8 +175,7 @@ async function trackStockChanges() {
                 if (lastStock === 0 && currentStock > 0) {
                     title = '🎉 PRODUCT RESTOCKED!';
                     color = 0x2ecc71; // Vivid Green
-                    const pingRole = db.getConfig('restock_ping_role');
-                    mention = pingRole ? `<@&${pingRole}> ` : '';
+                    mention = '@everyone ';
                     statusText = '🟢 Back in Stock!';
                 } else if (currentStock === 0 && lastStock > 0) {
                     title = '🔴 SOLD OUT';
@@ -152,7 +196,6 @@ async function trackStockChanges() {
                     .setDescription(`### 🛍️ ${pData.name}`)
                     .addFields(
                         { name: '📊 Stock Change', value: `\` ${lastStock} \` ➔ \` ${currentStock} \``, inline: true },
-                        { name: '💵 Price', value: `\` ${pData.price} NPR \``, inline: true },
                         { name: '⚡ Status', value: `**${statusText}**`, inline: true }
                     )
                     .setColor(color)
@@ -206,6 +249,7 @@ async function trackStockChanges() {
         
         if (updated) {
             db.setConfig('last_known_stock', lastKnownStock);
+            await updateAvailableProductsChannel();
         }
     } catch (error) { log.error({ err: error.message }, 'Stock tracker error'); }
 }
@@ -213,6 +257,7 @@ async function trackStockChanges() {
 client.once('clientReady', async () => {
     log.info({ user: client.user.tag }, 'Bot logged in');
     await trackStockChanges();
+    await updateAvailableProductsChannel();
     setInterval(trackStockChanges, 1 * 60 * 1000); 
     
     // Daily database backup
@@ -288,15 +333,16 @@ function buildShopRows(products, page = 0) {
     return rows;
 }
 
-function getShopEmbed() {
-    return new EmbedBuilder()
-        .setTitle('🛒 Available Products')
-        .setDescription(` **Guide:**
-🟢 In Stock | 🔴 Out of Stock
-⏱️ D/M = Day/Month | 🛡️ NW = No Warranty | FW = Full Warranty
-
-👇 **Tap a product to view details:**`)
-        .setColor(0xFFA500);
+function getProgressBar(stock) {
+    const maxCapacity = 15;
+    const filledBlocks = Math.max(0, Math.min(10, Math.round((stock / maxCapacity) * 10)));
+    const emptyBlocks = 10 - filledBlocks;
+    const bar = '█'.repeat(filledBlocks) + '░'.repeat(emptyBlocks);
+    if (stock === 0) {
+        return `\`[░░░░░░░░░░]\` **Out of Stock**`;
+    }
+    const pct = Math.min(100, Math.round((stock / maxCapacity) * 100));
+    return `\`[${bar}]\` **${pct}% Left** (${stock} left)`;
 }
 
 function getShopPaginationRow(page, totalPages) {
@@ -317,6 +363,17 @@ function getShopPaginationRow(page, totalPages) {
             .setStyle(ButtonStyle.Secondary)
             .setDisabled(page >= totalPages - 1)
     );
+}
+
+function getShopEmbed() {
+    return new EmbedBuilder()
+        .setTitle('🛒 Available Products')
+        .setDescription(` **Guide:**
+🟢 In Stock | 🔴 Out of Stock
+⏱️ D/M = Day/Month | 🛡️ NW = No Warranty | FW = Full Warranty
+
+👇 **Tap a product to view details:**`)
+        .setColor(0xFFA500);
 }
 
 async function renderShopPage(interaction, products, page) {

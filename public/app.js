@@ -202,9 +202,11 @@ async function loadDashboard() {
             const rateInput = document.getElementById('setting-rate');
             const channelInput = document.getElementById('setting-channel');
             const liveSalesInput = document.getElementById('setting-live-sales');
+            const availableProductsInput = document.getElementById('setting-available-products');
             if (rateInput) rateInput.value = settings.usdt_to_npr_rate || '';
             if (channelInput) channelInput.value = settings.notification_channel_id || '';
             if (liveSalesInput) liveSalesInput.value = settings.live_sales_channel_id || '';
+            if (availableProductsInput) availableProductsInput.value = settings.available_products_channel_id || '';
         }
 
         // Fetch Analytics
@@ -306,6 +308,7 @@ async function loadDashboard() {
             const rate = parseFloat(document.getElementById('setting-rate').value);
             const channelId = document.getElementById('setting-channel').value;
             const liveSalesId = document.getElementById('setting-live-sales').value;
+            const availableProductsId = document.getElementById('setting-available-products').value;
 
             try {
                 const res = await fetch('/api/settings', {
@@ -314,7 +317,8 @@ async function loadDashboard() {
                     body: JSON.stringify({ 
                         usdt_to_npr_rate: rate, 
                         notification_channel_id: channelId,
-                        live_sales_channel_id: liveSalesId
+                        live_sales_channel_id: liveSalesId,
+                        available_products_channel_id: availableProductsId
                     })
                 });
                 if (!res.ok) throw new Error('Failed to save settings');
@@ -493,7 +497,7 @@ async function loadUsers() {
         searchInput.oninput = (e) => {
             const query = e.target.value.toLowerCase();
             const filtered = allUsers.filter(u =>
-                (u.id && u.id.toLowerCase().includes(query)) ||
+                (u.discord_id && u.discord_id.toLowerCase().includes(query)) ||
                 (u.username && u.username.toLowerCase().includes(query))
             );
             renderUsers(filtered);
@@ -536,7 +540,7 @@ function renderUsers(users) {
         card.innerHTML = `
             <div class="user-card-header">
                 <div class="user-info">
-                    <h3>${u.username || 'Unknown'} <span class="user-id">(${u.id})</span></h3>
+                    <h3>${u.username || 'Unknown'} <span class="user-id">(${u.discord_id})</span></h3>
                     <div class="user-stats">
                         <span>Balance: <b>${formatNumber(u.balance_npr)}</b> NPR</span>
                         <span>Points: <b>${u.loyalty_points || 0}</b></span>
@@ -563,7 +567,7 @@ function renderUsers(users) {
         });
 
         card.querySelector('.adjust-balance-btn').addEventListener('click', () => {
-            openBalanceModal(u.id, u.username || u.id, u.balance_npr || 0);
+            openBalanceModal(u.discord_id, u.username || u.discord_id, u.balance_npr || 0);
         });
 
         list.appendChild(card);

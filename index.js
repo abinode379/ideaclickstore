@@ -110,10 +110,8 @@ function getMainMenuRow() {
         );
 }
 
-// ✅ HELPER: Build shop rows safely (Max 5 rows total: 4 for products, 1 for nav)
 function buildShopRows(products) {
     const rows = [];
-    // Max 8 products (4 rows of 2) to leave 1 row for navigation
     const productsToShow = products.slice(0, 8); 
     
     for (let i = 0; i < productsToShow.length; i += 2) {
@@ -124,7 +122,7 @@ function buildShopRows(products) {
         row.addComponents(
             new ButtonBuilder()
                 .setCustomId(`view_${p1.id}`)
-                .setLabel(`${p1.stock === 0 ? '🔴' : '🟢'} ${pData1.name.substring(0, 35)}`) // 35 chars fits perfectly
+                .setLabel(`${p1.stock === 0 ? '🔴' : ''} ${pData1.name.substring(0, 35)}`)
                 .setStyle(p1.stock === 0 ? ButtonStyle.Secondary : ButtonStyle.Primary)
                 .setDisabled(p1.stock === 0)
         );
@@ -135,7 +133,7 @@ function buildShopRows(products) {
             row.addComponents(
                 new ButtonBuilder()
                     .setCustomId(`view_${p2.id}`)
-                    .setLabel(`${p2.stock === 0 ? '🔴' : '🟢'} ${pData2.name.substring(0, 35)}`)
+                    .setLabel(`${p2.stock === 0 ? '' : '🟢'} ${pData2.name.substring(0, 35)}`)
                     .setStyle(p2.stock === 0 ? ButtonStyle.Secondary : ButtonStyle.Primary)
                     .setDisabled(p2.stock === 0)
             );
@@ -171,7 +169,6 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.reply({ embeds: [mainMenuEmbed], components: [getMainMenuRow()], ...ephemeral });
         }
 
-        // ✅ SHOP: 2 Buttons Per Row (Max 8 products + 1 nav row = 5 rows total)
         if (interaction.isButton() && interaction.customId === 'shop') {
             const productsResponse = await tunvnmmoAPI.get('/products');
             const allProducts = extractArray(productsResponse.data);
@@ -180,7 +177,7 @@ client.on('interactionCreate', async (interaction) => {
 
             if (products.length === 0) return await interaction.update({ content: '📭 No products available.', components: [], ...ephemeral });
 
-            const embed = new EmbedBuilder().setTitle('🛒 Available Products').setDescription('Click a product to view details:').setColor(0xFFA500);
+            const embed = new EmbedBuilder().setTitle(' Available Products').setDescription('Click a product to view details:').setColor(0xFFA500);
             const rows = buildShopRows(products);
             rows.push(getNavRow('shop'));
             
@@ -191,24 +188,40 @@ client.on('interactionCreate', async (interaction) => {
             try { users = JSON.parse(fs.readFileSync('users.json', 'utf8')); } catch (e) { users = {}; }
             const user = users[interaction.user.id] || { balance_npr: 0 };
             const embed = new EmbedBuilder()
-                .setTitle('💰 Your Balance')
+                .setTitle(' Your Balance')
                 .addFields({ name: 'Balance', value: `${user.balance_npr} NPR`, inline: true })
                 .setColor(0x00FF00).setTimestamp();
             await interaction.update({ embeds: [embed], components: [getNavRow('balance')] });
         }
 
+        // ✅ FIXED HISTORY SECTION
         if (interaction.isButton() && interaction.customId === 'history') {
-            await interaction.deferUpdate();
-            const ordersResponse = await tunvnmmoAPI.get('/orders');
-            const orders = extractArray(ordersResponse.data);
-            const embed = new EmbedBuilder().setTitle('📜 History').setColor(0x9900FF);
-            if (orders.length === 0) embed.setDescription('No history.');
-            else {
-                orders.slice(0, 5).forEach((order, i) => {
-                    embed.addFields({ name: `#${i+1}`, value: `${order.product} - ${order.price} NPR`, inline: false });
+            try { users = JSON.parse(fs.readFileSync('users.json', 'utf8')); } catch (e) { users = {}; }
+            
+            const user = users[interaction.user.id];
+            const history = user?.purchase_history || [];
+            
+            const embed = new EmbedBuilder()
+                .setTitle('📜 Your Purchase History')
+                .setColor(0x9900FF);
+            
+            if (history.length === 0) {
+                embed.setDescription('You have no purchase history yet.');
+            } else {
+                const recentHistory = [...history].reverse().slice(0, 10);
+                recentHistory.forEach((purchase, i) => {
+                    const date = new Date(purchase.date).toLocaleDateString('en-US', { 
+                        year: 'numeric', month: 'short', day: 'numeric',
+                        hour: '2-digit', minute: '2-digit'
+                    });
+                    embed.addFields({ 
+                        name: `#${history.length - i} - ${date}`, 
+                        value: `**${purchase.product}**\nQty: ${purchase.quantity} | Price: ${purchase.price} NPR`, 
+                        inline: false 
+                    });
                 });
             }
-            await interaction.editReply({ embeds: [embed], components: [getNavRow('history')] });
+            await interaction.update({ embeds: [embed], components: [getNavRow('history')] });
         }
 
         if (interaction.isButton() && interaction.customId === 'deposit') {
@@ -219,7 +232,6 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.showModal(modal);
         }
 
-        // ✅ NAV SHOP: 2 Buttons Per Row
         if (interaction.isButton() && interaction.customId === 'nav_shop') {
             const productsResponse = await tunvnmmoAPI.get('/products');
             const allProducts = extractArray(productsResponse.data);
@@ -240,18 +252,34 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.update({ embeds: [embed], components: [getNavRow('balance')] });
         }
 
+        // ✅ FIXED NAV HISTORY SECTION
         if (interaction.isButton() && interaction.customId === 'nav_history') {
-            await interaction.deferUpdate();
-            const ordersResponse = await tunvnmmoAPI.get('/orders');
-            const orders = extractArray(ordersResponse.data);
-            const embed = new EmbedBuilder().setTitle('📜 History').setColor(0x9900FF);
-            if (orders.length === 0) embed.setDescription('No history.');
-            else {
-                orders.slice(0, 5).forEach((order, i) => {
-                    embed.addFields({ name: `#${i+1}`, value: `${order.product} - ${order.price} NPR`, inline: false });
+            try { users = JSON.parse(fs.readFileSync('users.json', 'utf8')); } catch (e) { users = {}; }
+            
+            const user = users[interaction.user.id];
+            const history = user?.purchase_history || [];
+            
+            const embed = new EmbedBuilder()
+                .setTitle('📜 Your Purchase History')
+                .setColor(0x9900FF);
+            
+            if (history.length === 0) {
+                embed.setDescription('You have no purchase history yet.');
+            } else {
+                const recentHistory = [...history].reverse().slice(0, 10);
+                recentHistory.forEach((purchase, i) => {
+                    const date = new Date(purchase.date).toLocaleDateString('en-US', { 
+                        year: 'numeric', month: 'short', day: 'numeric',
+                        hour: '2-digit', minute: '2-digit'
+                    });
+                    embed.addFields({ 
+                        name: `#${history.length - i} - ${date}`, 
+                        value: `**${purchase.product}**\nQty: ${purchase.quantity} | Price: ${purchase.price} NPR`, 
+                        inline: false 
+                    });
                 });
             }
-            await interaction.editReply({ embeds: [embed], components: [getNavRow('history')] });
+            await interaction.update({ embeds: [embed], components: [getNavRow('history')] });
         }
 
         if (interaction.isButton() && interaction.customId === 'nav_deposit') {
@@ -307,6 +335,7 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.showModal(modal);
         }
 
+        // ✅ FIXED PURCHASE SECTION (Saves to local history)
         if (interaction.isModalSubmit() && interaction.customId.startsWith('purchase_')) {
             const productId = interaction.customId.replace('purchase_', '');
             const quantity = parseInt(interaction.fields.getTextInputValue('qty'));
@@ -320,8 +349,9 @@ client.on('interactionCreate', async (interaction) => {
                 const pData = getProductData(product);
                 const totalCost = Number(pData.price) * quantity;
 
+                // Reload users to prevent race conditions
                 try { users = JSON.parse(fs.readFileSync('users.json', 'utf8')); } catch (e) { users = {}; }
-                if (!users[interaction.user.id]) users[interaction.user.id] = { balance_npr: 0 };
+                if (!users[interaction.user.id]) users[interaction.user.id] = { balance_npr: 0, purchase_history: [] };
                 
                 if (users[interaction.user.id].balance_npr < totalCost) {
                     throw new Error(`Need ${totalCost} NPR, have ${users[interaction.user.id].balance_npr} NPR`);
@@ -332,6 +362,18 @@ client.on('interactionCreate', async (interaction) => {
                 if (data.success === false || data.error) throw new Error(data.message || "Failed");
 
                 users[interaction.user.id].balance_npr -= totalCost;
+                
+                // Save to purchase history
+                if (!users[interaction.user.id].purchase_history) {
+                    users[interaction.user.id].purchase_history = [];
+                }
+                users[interaction.user.id].purchase_history.push({
+                    product: pData.name,
+                    price: totalCost,
+                    quantity: quantity,
+                    date: new Date().toISOString()
+                });
+                
                 saveUsers();
 
                 let details = data.account_details || (data.items ? data.items.join('\n') : "No details");
@@ -370,7 +412,7 @@ client.on('interactionCreate', async (interaction) => {
                     new ButtonBuilder().setLabel('💳 Pay').setURL(session.data.checkout_url).setStyle(ButtonStyle.Link)
                 );
                 const backRow = new ActionRowBuilder().addComponents(
-                    new ButtonBuilder().setCustomId('nav_back').setLabel('🔙 Back to Main Menu').setStyle(ButtonStyle.Danger)
+                    new ButtonBuilder().setCustomId('nav_back').setLabel(' Back to Main Menu').setStyle(ButtonStyle.Danger)
                 );
 
                 await interaction.editReply({ embeds: [embed], components: [payRow, backRow] });
@@ -380,7 +422,7 @@ client.on('interactionCreate', async (interaction) => {
         }
 
     } catch (error) {
-        console.error('❌ Error:', error.message);
+        console.error(' Error:', error.message);
     }
 });
 

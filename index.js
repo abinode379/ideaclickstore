@@ -334,15 +334,14 @@ function buildShopRows(products, page = 0) {
 }
 
 function getProgressBar(stock) {
-    const maxCapacity = 15;
+    const maxCapacity = 100;
     const filledBlocks = Math.max(0, Math.min(10, Math.round((stock / maxCapacity) * 10)));
     const emptyBlocks = 10 - filledBlocks;
     const bar = '█'.repeat(filledBlocks) + '░'.repeat(emptyBlocks);
     if (stock === 0) {
         return `\`[░░░░░░░░░░]\` **Out of Stock**`;
     }
-    const pct = Math.min(100, Math.round((stock / maxCapacity) * 100));
-    return `\`[${bar}]\` **${pct}% Left** (${stock} left)`;
+    return `\`[${bar}]\` (${stock} left)`;
 }
 
 function getShopPaginationRow(page, totalPages) {

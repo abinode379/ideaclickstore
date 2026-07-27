@@ -103,6 +103,24 @@ function getProductData(product) {
     };
 }
 
+function getProductEmoji(name) {
+    const lower = (name || '').toLowerCase();
+    let emojiName = '🔹';
+    if (lower.includes('chatgpt') || lower.includes('chat gpt')) emojiName = 'ChatGPT';
+    else if (lower.includes('capcut')) emojiName = 'Capcut';
+    else if (lower.includes('linkedin')) emojiName = 'LinkedIn';
+    else if (lower.includes('gemini')) emojiName = 'gemini~1';
+    else if (lower.includes('grok')) emojiName = 'Grok';
+    else if (lower.includes('api')) emojiName = 'ActiveDeveloper';
+    else return '🔹';
+
+    const foundEmoji = client.emojis.cache.find(e => e.name.toLowerCase() === emojiName.toLowerCase().replace('~1', ''));
+    if (foundEmoji) {
+        return `<:${foundEmoji.name}:${foundEmoji.id}>`;
+    }
+    return `:${emojiName}:`;
+}
+
 async function updateAvailableProductsChannel() {
     try {
         const channelId = db.getConfig('available_products_channel_id');
@@ -124,7 +142,8 @@ async function updateAvailableProductsChannel() {
             products.forEach(product => {
                 const pData = getProductData(product);
                 const bar = getProgressBar(product.stock ?? 0);
-                descriptionText += `🔹 **${pData.name}**\n${bar}\n\n`;
+                const emoji = getProductEmoji(pData.name);
+                descriptionText += `${emoji} **${pData.name}**\n${bar}\n\n`;
             });
         }
 
@@ -193,7 +212,7 @@ async function trackStockChanges() {
 
                 const embed = new EmbedBuilder()
                     .setTitle(title)
-                    .setDescription(`### 🛍️ ${pData.name}`)
+                    .setDescription(`### ${getProductEmoji(pData.name)} ${pData.name}`)
                     .addFields(
                         { name: '📊 Stock Change', value: `\` ${lastStock} \` ➔ \` ${currentStock} \``, inline: true },
                         { name: '⚡ Status', value: `**${statusText}**`, inline: true }
@@ -215,7 +234,7 @@ async function trackStockChanges() {
                         const liveSalesChannel = client.channels.cache.get(liveSalesChannelId);
                         if (liveSalesChannel) {
                             const fakePurchaseEmbed = new EmbedBuilder()
-                                .setDescription(`🛒 **New Purchase!** 👤 An anonymous customer just bought **${diff}x ${pData.name}**! ⚡ Delivery Speed: **Instant (0.1s)**`)
+                                .setDescription(`🛒 **New Purchase!** 👤 An anonymous customer just bought **${diff}x ${getProductEmoji(pData.name)} ${pData.name}**! ⚡ Delivery Speed: **Instant (0.1s)**`)
                                 .setColor(0x2ecc71);
 
                             await liveSalesChannel.send({ embeds: [fakePurchaseEmbed] }).catch(err => log.error({ err: err.message }, 'Failed to send fake live sale alert'));

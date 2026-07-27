@@ -580,7 +580,15 @@ Join our support channel or open a ticket!
                 
                 await interaction.reply({ embeds: [embed], ...ephemeral });
             } catch (error) {
-                await interaction.reply({ content: `⏰ ${error.message}`, ...ephemeral });
+                let msg = error.message;
+                if (msg.startsWith('Next claim time: ')) {
+                    const timeMs = Number(msg.replace('Next claim time: ', ''));
+                    if (!isNaN(timeMs)) {
+                        const timeSecs = Math.floor(timeMs / 1000);
+                        msg = `Next claim time: <t:${timeSecs}:F> (<t:${timeSecs}:R>)`;
+                    }
+                }
+                await interaction.reply({ content: `⏰ ${msg}`, ...ephemeral });
             }
         }
 

@@ -712,8 +712,8 @@ Join our support channel or open a ticket!
 
         if (interaction.isButton() && interaction.customId.startsWith('confirmbuy_')) {
             const parts = interaction.customId.split('_');
-            const productId = parts[1];
-            const quantity = parseInt(parts[2]);
+            const quantity = parseInt(parts[parts.length - 1]);
+            const productId = parts.slice(1, parts.length - 1).join('_');
             await interaction.deferUpdate();
             try {
                 const allProducts = await getMergedProducts();

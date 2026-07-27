@@ -204,6 +204,7 @@ app.get('/api/products', ensureAuthAPI, async (req, res) => {
                 description: lp.description || '',
                 price_usdt: Number(lp.price) / (db.getConfig('usdt_to_npr_rate') || 250),
                 stock: lp.infinite_stock ? 9999 : (lp.stock ? lp.stock.length : 0),
+                stock_list: lp.stock || [],
                 is_local: true,
                 infinite_stock: lp.infinite_stock || false,
                 hidden: lp.hidden || false,

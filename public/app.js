@@ -448,10 +448,11 @@ async function loadProducts() {
 
             let stockHtml = '';
             if (isLocal) {
+                const singleLink = isInfinite && p.stock_list && p.stock_list[0] ? p.stock_list[0] : '';
                 stockHtml = `
                     <div class="form-group mt-3">
-                        <label>Add Stock (One link/code per line)</label>
-                        <textarea class="textarea-field prod-stock" style="min-height: 80px;" placeholder="${isInfinite ? 'Enter single reusable link here...' : 'Paste new stock lines here to ADD to current stock...'}"></textarea>
+                        <label>${isInfinite ? 'Reusable Link / Code' : 'Add Stock (One link/code per line)'}</label>
+                        <textarea class="textarea-field prod-stock" style="min-height: 80px;" placeholder="${isInfinite ? 'Enter single reusable link here...' : 'Paste new stock lines here to ADD to current stock...'}">${singleLink}</textarea>
                         <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 4px;">${isInfinite ? 'Reusable stock uses only the first link. Pasting a new one here will overwrite it.' : 'Leaving this empty keeps current stock intact.'}</div>
                     </div>
 

@@ -124,7 +124,7 @@ async function updateAvailableProductsChannel() {
             products.forEach(product => {
                 const pData = getProductData(product);
                 const bar = getProgressBar(product.stock ?? 0);
-                descriptionText += `🔹 **${pData.name}** - ${pData.price} NPR\n${bar}\n\n`;
+                descriptionText += `🔹 **${pData.name}**\n${bar}\n\n`;
             });
         }
 

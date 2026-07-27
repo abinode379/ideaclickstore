@@ -121,7 +121,8 @@ async function getMergedProducts() {
             name: p.name,
             description: p.description || '',
             price_usdt: Number(p.price) / (db.getConfig('usdt_to_npr_rate') || 250),
-            stock: p.stock ? p.stock.length : 0,
+            stock: p.infinite_stock ? 9999 : (p.stock ? p.stock.length : 0),
+            infinite_stock: !!p.infinite_stock,
             is_local: true
         }));
         
@@ -135,7 +136,8 @@ async function getMergedProducts() {
                 name: p.name,
                 description: p.description || '',
                 price_usdt: Number(p.price) / (db.getConfig('usdt_to_npr_rate') || 250),
-                stock: p.stock ? p.stock.length : 0,
+                stock: p.infinite_stock ? 9999 : (p.stock ? p.stock.length : 0),
+                infinite_stock: !!p.infinite_stock,
                 is_local: true
             }));
         } catch (localErr) {
@@ -181,7 +183,7 @@ async function updateAvailableProductsChannel() {
         } else {
             products.forEach(product => {
                 const pData = getProductData(product);
-                const bar = getProgressBar(product.stock ?? 0);
+                const bar = getProgressBar(product.stock ?? 0, product.infinite_stock);
                 const emoji = getProductEmoji(pData.name);
                 descriptionText += `${emoji} **${pData.name}**\n${bar}\n\n`;
             });
@@ -365,25 +367,27 @@ function buildShopRows(products, page = 0) {
         
         const p1 = productsToShow[i];
         const pData1 = getProductData(p1);
-        const stockEmoji1 = (p1.stock ?? 0) > 0 ? '🟢' : '🔴';
+        const hasStock1 = (p1.stock ?? 0) > 0 || p1.infinite_stock;
+        const stockEmoji1 = hasStock1 ? '🟢' : '🔴';
         row.addComponents(
             new ButtonBuilder()
                 .setCustomId(`view_${p1.id}`)
                 .setLabel(`${pData1.name.substring(0, 28)} ${stockEmoji1}`)
-                .setStyle((p1.stock ?? 0) === 0 ? ButtonStyle.Secondary : ButtonStyle.Primary)
-                .setDisabled((p1.stock ?? 0) === 0)
+                .setStyle(!hasStock1 ? ButtonStyle.Secondary : ButtonStyle.Primary)
+                .setDisabled(!hasStock1)
         );
         
         if (i + 1 < productsToShow.length) {
             const p2 = productsToShow[i + 1];
             const pData2 = getProductData(p2);
-            const stockEmoji2 = (p2.stock ?? 0) > 0 ? '🟢' : '🔴';
+            const hasStock2 = (p2.stock ?? 0) > 0 || p2.infinite_stock;
+            const stockEmoji2 = hasStock2 ? '🟢' : '🔴';
             row.addComponents(
                 new ButtonBuilder()
                     .setCustomId(`view_${p2.id}`)
                     .setLabel(`${pData2.name.substring(0, 28)} ${stockEmoji2}`)
-                    .setStyle((p2.stock ?? 0) === 0 ? ButtonStyle.Secondary : ButtonStyle.Primary)
-                    .setDisabled((p2.stock ?? 0) === 0)
+                    .setStyle(!hasStock2 ? ButtonStyle.Secondary : ButtonStyle.Primary)
+                    .setDisabled(!hasStock2)
             );
         }
         rows.push(row);
@@ -391,7 +395,10 @@ function buildShopRows(products, page = 0) {
     return rows;
 }
 
-function getProgressBar(stock) {
+function getProgressBar(stock, isInfinite = false) {
+    if (isInfinite) {
+        return `\`[██████████]\` **Infinite Stock**`;
+    }
     const maxCapacity = 100;
     const filledBlocks = Math.max(0, Math.min(10, Math.round((stock / maxCapacity) * 10)));
     const emptyBlocks = 10 - filledBlocks;
@@ -572,8 +579,7 @@ Join our support channel or open a ticket!
         }
 
         if (interaction.isButton() && interaction.customId === 'shop') {
-            const productsResponse = await tunvnmmoAPI.get('/products');
-            const allProducts = extractArray(productsResponse.data);
+            const allProducts = await getMergedProducts();
             const hiddenProducts = db.getConfig('hidden_products') || [];
             const products = sortProducts(allProducts.filter(p => !hiddenProducts.includes(String(p.id))));
             if (products.length === 0) return await interaction.update({ content: '📭 No products available.', components: [], ...ephemeral });
@@ -685,9 +691,10 @@ Join our support channel or open a ticket!
             const product = allProducts.find(p => String(p.id) === String(productId));
             if (!product) return await interaction.reply({ content: '❌ Not found', ...ephemeral });
             const pData = getProductData(product);
-            const embed = new EmbedBuilder().setTitle(`📦 ${pData.name}`).setDescription(pData.description).addFields({ name: ' Price', value: `${pData.price} NPR`, inline: true }, { name: '📦 Stock', value: `${product.stock ?? 0}`, inline: true }).setColor((product.stock ?? 0) > 0 ? 0x00FF00 : 0xFF0000);
+            const stockText = product.infinite_stock ? 'Infinite' : String(product.stock ?? 0);
+            const embed = new EmbedBuilder().setTitle(`📦 ${pData.name}`).setDescription(pData.description).addFields({ name: ' Price', value: `${pData.price} NPR`, inline: true }, { name: '📦 Stock', value: stockText, inline: true }).setColor((product.stock ?? 0) > 0 || product.infinite_stock ? 0x00FF00 : 0xFF0000);
             const row = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId(`buy_${product.id}`).setLabel('🛒 Buy').setStyle(ButtonStyle.Success).setDisabled((product.stock ?? 0) === 0),
+                new ButtonBuilder().setCustomId(`buy_${product.id}`).setLabel('🛒 Buy').setStyle(ButtonStyle.Success).setDisabled((product.stock ?? 0) === 0 && !product.infinite_stock),
                 new ButtonBuilder().setCustomId('nav_shop').setLabel('🔙 Back to Shop').setStyle(ButtonStyle.Secondary)
             );
             await interaction.update({ embeds: [embed], components: [row] });
@@ -797,8 +804,8 @@ Join our support channel or open a ticket!
             if (isNaN(quantity) || quantity <= 0) return await interaction.reply({ content: '❌ Invalid quantity.', ...ephemeral });
             await interaction.deferReply({ ...ephemeral });
             try {
-                const productsRes = await tunvnmmoAPI.get('/products');
-                const product = extractArray(productsRes.data).find(p => String(p.id) === String(productId));
+                const allProducts = await getMergedProducts();
+                const product = allProducts.find(p => String(p.id) === String(productId));
                 if (!product) throw new Error('Product not found');
                 const pData = getProductData(product);
                 const totalCost = Number(pData.price) * quantity;

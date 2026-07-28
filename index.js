@@ -245,6 +245,7 @@ async function trackStockChanges() {
                 } else if (currentStock > lastStock) {
                     title = '📈 STOCK INCREASED';
                     color = 0x2ecc71; // Green
+                    mention = '@everyone ';
                     statusText = '🟢 Stock Refilled';
                 } else if (currentStock < lastStock) {
                     title = '📉 STOCK DECREASED';

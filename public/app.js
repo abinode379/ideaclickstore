@@ -1,4 +1,4 @@
-document.addEventListener('DOMContentLoaded', () => {
+function initApp() {
     initTabs();
     initMobileMenu();
     initModals();
@@ -11,7 +11,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Load default tab
     loadDashboard();
-});
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initApp);
+} else {
+    initApp();
+}
 
 // ========== Toast System ==========
 function showToast(message, type = 'info') {

@@ -112,6 +112,10 @@
                         <input type="text" id="setting-available-products" class="input-field">
                     </div>
                     <div class="form-group mt-3">
+                        <label for="setting-backup-channel">Backup Channel ID (Database backup logs)</label>
+                        <input type="text" id="setting-backup-channel" class="input-field">
+                    </div>
+                    <div class="form-group mt-3">
                         <label for="setting-loyalty-earn">Loyalty Point Earning Rate (NPR spent per 1 point)</label>
                         <input type="number" id="setting-loyalty-earn" class="input-field" placeholder="Default: 10">
                     </div>
@@ -120,6 +124,14 @@
                         <input type="number" id="setting-loyalty-redeem" class="input-field" placeholder="Default: 10">
                     </div>
                     <button class="btn-primary mt-3" id="save-settings-btn">Save Settings</button>
+                    
+                    <div class="mt-4" style="border-top: 1px solid var(--border-color); padding-top: 20px; display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <h4 style="margin: 0; font-size: 1.1rem;">Manual Database Backup</h4>
+                            <p style="color: var(--text-secondary); font-size: 0.9rem; margin: 5px 0 0 0;">Sends an instant snapshot backup of all JSON databases to your configured backup channel.</p>
+                        </div>
+                        <button class="btn-primary" id="trigger-backup-btn" style="background: var(--success); margin: 0;">Backup Database Now</button>
+                    </div>
                 </div>
             </div>
 
@@ -128,6 +140,12 @@
                 <div class="flex-between">
                     <h2 class="section-title">Manage Products</h2>
                     <button class="btn-primary" id="add-local-product-btn">Add Local Product</button>
+                </div>
+                <div class="search-container mt-4 mb-2">
+                    <div class="search-bar">
+                        <span class="search-icon" style="top: 13px; display: flex; align-items: center;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display: inline-block; vertical-align: middle;"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg></span>
+                        <input type="text" id="product-search" class="input-field" placeholder="Search local products by name...">
+                    </div>
                 </div>
                 <div id="products-grid" class="product-grid mt-4">
                     <!-- Populated by JS -->

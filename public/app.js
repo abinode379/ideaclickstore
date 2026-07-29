@@ -270,12 +270,14 @@ async function loadDashboard() {
             const channelInput = document.getElementById('setting-channel');
             const liveSalesInput = document.getElementById('setting-live-sales');
             const availableProductsInput = document.getElementById('setting-available-products');
+            const backupChannelInput = document.getElementById('setting-backup-channel');
             const earnInput = document.getElementById('setting-loyalty-earn');
             const redeemInput = document.getElementById('setting-loyalty-redeem');
             if (rateInput) rateInput.value = settings.usdt_to_npr_rate || '';
             if (channelInput) channelInput.value = settings.notification_channel_id || '';
             if (liveSalesInput) liveSalesInput.value = settings.live_sales_channel_id || '';
             if (availableProductsInput) availableProductsInput.value = settings.available_products_channel_id || '';
+            if (backupChannelInput) backupChannelInput.value = settings.backup_channel_id || '';
             if (earnInput) earnInput.value = settings.loyalty_earn_rate || '';
             if (redeemInput) redeemInput.value = settings.loyalty_redeem_rate || '';
         }
@@ -380,6 +382,7 @@ async function loadDashboard() {
             const channelId = document.getElementById('setting-channel').value;
             const liveSalesId = document.getElementById('setting-live-sales').value;
             const availableProductsId = document.getElementById('setting-available-products').value;
+            const backupChannelId = document.getElementById('setting-backup-channel').value;
             const earnRate = parseInt(document.getElementById('setting-loyalty-earn').value);
             const redeemRate = parseInt(document.getElementById('setting-loyalty-redeem').value);
 
@@ -392,6 +395,7 @@ async function loadDashboard() {
                         notification_channel_id: channelId,
                         live_sales_channel_id: liveSalesId,
                         available_products_channel_id: availableProductsId,
+                        backup_channel_id: backupChannelId,
                         loyalty_earn_rate: isNaN(earnRate) ? null : earnRate,
                         loyalty_redeem_rate: isNaN(redeemRate) ? null : redeemRate
                     })
@@ -400,6 +404,25 @@ async function loadDashboard() {
                 showToast('Settings saved successfully', 'success');
             } catch (err) {
                 showToast(err.message, 'error');
+            }
+        };
+    }
+
+    // Manual Backup Trigger
+    const backupBtn = document.getElementById('trigger-backup-btn');
+    if (backupBtn) {
+        backupBtn.onclick = async () => {
+            backupBtn.disabled = true;
+            backupBtn.innerText = 'Backing up...';
+            try {
+                const res = await fetch('/api/backup', { method: 'POST' });
+                if (!res.ok) throw new Error('Backup failed');
+                showToast('Database backup triggered successfully!', 'success');
+            } catch (err) {
+                showToast(err.message, 'error');
+            } finally {
+                backupBtn.disabled = false;
+                backupBtn.innerText = 'Backup Database Now';
             }
         };
     }
@@ -444,6 +467,7 @@ async function loadProducts() {
             const custom = p.custom || {};
             const isHidden = p.hidden === true;
             const displayName = custom.name || p.name || 'Unnamed';
+            card.setAttribute('data-name', displayName.toLowerCase());
             const isLocal = p.is_local === true;
             const isInfinite = p.infinite_stock === true;
             const stockCount = p.stock != null ? p.stock : 0;
@@ -616,6 +640,22 @@ async function loadProducts() {
 
             grid.appendChild(card);
         });
+
+        const searchInput = document.getElementById('product-search');
+        if (searchInput) {
+            searchInput.oninput = (e) => {
+                const query = e.target.value.toLowerCase().trim();
+                const cards = grid.querySelectorAll('.product-card');
+                cards.forEach(c => {
+                    const name = c.getAttribute('data-name') || '';
+                    if (name.includes(query)) {
+                        c.style.display = 'block';
+                    } else {
+                        c.style.display = 'none';
+                    }
+                });
+            };
+        }
     } catch (err) {
         grid.innerHTML = `<div style="grid-column: 1/-1; text-align:center; color: var(--danger); padding: 2rem;">${err.message}</div>`;
         showToast('Failed to load products', 'error');

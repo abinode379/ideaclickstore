@@ -326,6 +326,14 @@ client.once('clientReady', async () => {
     // Daily database backup
     await runDailyBackup();
     setInterval(runDailyBackup, 24 * 60 * 60 * 1000);
+
+    // Poll for manual backup trigger
+    setInterval(async () => {
+        if (db.getConfig('trigger_backup_flag')) {
+            db.setConfig('trigger_backup_flag', false);
+            await runDailyBackup();
+        }
+    }, 5000);
 });
 
 function getShopMainMenuEmbed(interaction) {

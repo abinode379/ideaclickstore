@@ -137,17 +137,19 @@ app.get('/api/settings', ensureAuthAPI, (req, res) => {
         notification_channel_id: db.getConfig('notification_channel_id'),
         live_sales_channel_id: db.getConfig('live_sales_channel_id'),
         available_products_channel_id: db.getConfig('available_products_channel_id'),
+        backup_channel_id: db.getConfig('backup_channel_id'),
         loyalty_earn_rate: db.getConfig('loyalty_earn_rate') !== undefined ? db.getConfig('loyalty_earn_rate') : 10,
         loyalty_redeem_rate: db.getConfig('loyalty_redeem_rate') !== undefined ? db.getConfig('loyalty_redeem_rate') : 10
     });
 });
 
 app.post('/api/settings', ensureAuthAPI, (req, res) => {
-    const { usdt_to_npr_rate, notification_channel_id, live_sales_channel_id, available_products_channel_id, loyalty_earn_rate, loyalty_redeem_rate } = req.body;
+    const { usdt_to_npr_rate, notification_channel_id, live_sales_channel_id, available_products_channel_id, backup_channel_id, loyalty_earn_rate, loyalty_redeem_rate } = req.body;
     if (usdt_to_npr_rate !== undefined) db.setConfig('usdt_to_npr_rate', usdt_to_npr_rate);
     if (notification_channel_id !== undefined) db.setConfig('notification_channel_id', notification_channel_id);
     if (live_sales_channel_id !== undefined) db.setConfig('live_sales_channel_id', live_sales_channel_id);
     if (available_products_channel_id !== undefined) db.setConfig('available_products_channel_id', available_products_channel_id);
+    if (backup_channel_id !== undefined) db.setConfig('backup_channel_id', backup_channel_id);
     if (loyalty_earn_rate !== undefined) db.setConfig('loyalty_earn_rate', loyalty_earn_rate);
     if (loyalty_redeem_rate !== undefined) db.setConfig('loyalty_redeem_rate', loyalty_redeem_rate);
     
@@ -162,6 +164,7 @@ app.post('/api/settings', ensureAuthAPI, (req, res) => {
             { name: 'Notification Channel', value: notification_channel_id ? `\` ${notification_channel_id} \`` : 'N/A', inline: true },
             { name: 'Live Sales Channel', value: live_sales_channel_id ? `\` ${live_sales_channel_id} \`` : 'N/A', inline: true },
             { name: 'Catalog Channel', value: available_products_channel_id ? `\` ${available_products_channel_id} \`` : 'N/A', inline: true },
+            { name: 'Backup Channel', value: backup_channel_id ? `\` ${backup_channel_id} \`` : 'N/A', inline: true },
             { name: 'Loyalty Earn Rate', value: loyalty_earn_rate ? `\` ${loyalty_earn_rate} NPR spent = 1 pt \`` : 'N/A', inline: true },
             { name: 'Loyalty Redeem Rate', value: loyalty_redeem_rate ? `\` ${loyalty_redeem_rate} pts = 1 NPR \`` : 'N/A', inline: true }
         ],
@@ -169,6 +172,12 @@ app.post('/api/settings', ensureAuthAPI, (req, res) => {
     });
     
     res.json({ success: true });
+});
+
+app.post('/api/backup', ensureAuthAPI, (req, res) => {
+    db.setConfig('trigger_backup_flag', true);
+    db.appendLog({ action: 'manual_backup_requested', details: { admin: req.session?.admin?.username || 'System' } });
+    res.json({ success: true, message: 'Database backup request triggered successfully!' });
 });
 
 app.get('/api/products', ensureAuthAPI, async (req, res) => {

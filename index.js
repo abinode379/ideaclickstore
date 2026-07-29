@@ -675,7 +675,7 @@ Join our support channel or open a ticket!
                         .setTimestamp()
                 );
                 
-                await interaction.reply({ embeds: [embed], ...ephemeral });
+                await interaction.update({ embeds: [embed], components: [getNavRow('back')] });
             } catch (error) {
                 let msg = error.message;
                 if (msg.startsWith('Next claim time: ')) {
@@ -685,7 +685,11 @@ Join our support channel or open a ticket!
                         msg = `Next claim time: <t:${timeSecs}:F> (<t:${timeSecs}:R>)`;
                     }
                 }
-                await interaction.reply({ content: `⏰ ${msg}`, ...ephemeral });
+                const errEmbed = new EmbedBuilder()
+                    .setTitle('⏰ Daily Reward')
+                    .setDescription(`❌ ${msg}`)
+                    .setColor(0xe74c3c);
+                await interaction.update({ embeds: [errEmbed], components: [getNavRow('back')] });
             }
         }
 

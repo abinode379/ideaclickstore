@@ -28,6 +28,9 @@
             <li class="sidebar-item" data-target="tab-logs">
                 Logs
             </li>
+            <li class="sidebar-item" data-target="tab-settings">
+                Settings
+            </li>
             <li class="sidebar-item logout-item">
                 <a href="/logout">Logout</a>
             </li>
@@ -93,68 +96,6 @@
                     </div>
                 </div>
 
-                <div class="settings-section glass-card mt-4">
-                    <h3>System Settings</h3>
-                    <div class="form-group mt-3">
-                        <label for="setting-rate">USDT to NPR Rate</label>
-                        <input type="number" id="setting-rate" class="input-field" step="0.01">
-                    </div>
-                    <div class="form-group mt-3">
-                        <label for="setting-channel">Notification Channel ID</label>
-                        <input type="text" id="setting-channel" class="input-field">
-                    </div>
-                    <div class="form-group mt-3">
-                        <label for="setting-live-sales">Live Sales Channel ID (Fake purchase alerts)</label>
-                        <input type="text" id="setting-live-sales" class="input-field">
-                    </div>
-                    <div class="form-group mt-3">
-                        <label for="setting-available-products">Available Products Channel ID (Live catalog)</label>
-                        <input type="text" id="setting-available-products" class="input-field">
-                    </div>
-                    <div class="form-group mt-3">
-                        <label for="setting-backup-channel">Backup Channel ID (Database backup logs)</label>
-                        <input type="text" id="setting-backup-channel" class="input-field">
-                    </div>
-                    <div class="form-group mt-3">
-                        <label for="setting-loyalty-earn">Loyalty Point Earning Rate (NPR spent per 1 point)</label>
-                        <input type="number" id="setting-loyalty-earn" class="input-field" placeholder="Default: 10">
-                    </div>
-                    <div class="form-group mt-3">
-                        <label for="setting-loyalty-redeem">Loyalty Point Redemption Rate (Points per 1 NPR)</label>
-                        <input type="number" id="setting-loyalty-redeem" class="input-field" placeholder="Default: 10">
-                    </div>
-                    <div class="form-group mt-3">
-                        <label for="setting-theme-color">Shop Embed Theme Color (Hex Code)</label>
-                        <div style="display: flex; gap: 10px; align-items: center;">
-                            <input type="color" id="setting-theme-color-picker" style="border: none; background: transparent; width: 40px; height: 40px; cursor: pointer; padding: 0;">
-                            <input type="text" id="setting-theme-color" class="input-field" placeholder="#8b5cf6" style="flex: 1;">
-                        </div>
-                    </div>
-                    <div class="form-group mt-3">
-                        <label for="setting-menu-banner">Shop Main Menu Large Banner URL (Image link)</label>
-                        <input type="text" id="setting-menu-banner" class="input-field" placeholder="e.g. https://domain.com/banner.png">
-                    </div>
-                    <div class="form-group mt-3">
-                        <label for="setting-menu-thumbnail">Shop Main Menu Small Thumbnail URL (Image link)</label>
-                        <input type="text" id="setting-menu-thumbnail" class="input-field" placeholder="Leave empty for user's Discord avatar">
-                    </div>
-                    <button class="btn-primary mt-3" id="save-settings-btn">Save Settings</button>
-                    
-                    <div class="mt-4" style="border-top: 1px solid var(--border-color); padding-top: 20px; display: flex; justify-content: space-between; align-items: center;">
-                        <div>
-                            <h4 style="margin: 0; font-size: 1.1rem;">Manual Database Backup</h4>
-                            <p style="color: var(--text-secondary); font-size: 0.9rem; margin: 5px 0 0 0;">Sends an instant snapshot backup of all JSON databases to your configured backup channel.</p>
-                        </div>
-                        <button class="btn-primary" id="trigger-backup-btn" style="background: var(--success); margin: 0;">Backup Database Now</button>
-                    </div>
-
-                    <div class="mt-4" style="border-top: 1px solid var(--border-color); padding-top: 20px; display: flex; justify-content: space-between; align-items: center;">
-                        <div>
-                            <h4 style="margin: 0; font-size: 1.1rem;">Session & Database Cleaner</h4>
-                            <p style="color: var(--text-secondary); font-size: 0.9rem; margin: 5px 0 0 0;">Instantly logs out all inactive administrators and cleans database session caches.</p>
-                        </div>
-                        <button class="btn-primary" id="clean-sessions-btn" style="background: #e11d48; margin: 0;">Clean Session Cache</button>
-                    </div>
                 </div>
             </div>
 
@@ -202,6 +143,73 @@
                 </div>
                 <div id="logs-feed" class="logs-feed glass-card">
                     <!-- Populated by JS -->
+                </div>
+            </div>
+
+            <!-- Settings Tab -->
+            <div id="tab-settings" class="tab-content">
+                <div class="settings-section glass-card">
+                    <h2 class="section-title mb-4">System Settings</h2>
+                    <div class="form-group mt-3">
+                        <label for="setting-rate">USDT to NPR Rate</label>
+                        <input type="number" id="setting-rate" class="input-field" step="0.01">
+                    </div>
+                    <div class="form-group mt-3">
+                        <label for="setting-channel">Notification Channel ID</label>
+                        <input type="text" id="setting-channel" class="input-field">
+                    </div>
+                    <div class="form-group mt-3">
+                        <label for="setting-live-sales">Live Sales Channel ID (Fake purchase alerts)</label>
+                        <input type="text" id="setting-live-sales" class="input-field">
+                    </div>
+                    <div class="form-group mt-3">
+                        <label for="setting-available-products">Available Products Channel ID (Live catalog)</label>
+                        <input type="text" id="setting-available-products" class="input-field">
+                    </div>
+                    <div class="form-group mt-3">
+                        <label for="setting-backup-channel">Backup Channel ID (Database backup logs)</label>
+                        <input type="text" id="setting-backup-channel" class="input-field">
+                    </div>
+                    <div class="form-group mt-3">
+                        <label for="setting-loyalty-earn">Loyalty Point Earning Rate (NPR spent per 1 point)</label>
+                        <input type="number" id="setting-loyalty-earn" class="input-field" placeholder="Default: 10">
+                    </div>
+                    <div class="form-group mt-3">
+                        <label for="setting-loyalty-redeem">Loyalty Point Redemption Rate (Points per 1 NPR)</label>
+                        <input type="number" id="setting-loyalty-redeem" class="input-field" placeholder="Default: 10">
+                    </div>
+                    <div class="form-group mt-3">
+                        <label for="setting-theme-color">Shop Embed Theme Color (Hex Code)</label>
+                        <div style="display: flex; gap: 10px; align-items: center;">
+                            <input type="color" id="setting-theme-color-picker" style="border: none; background: transparent; width: 40px; height: 40px; cursor: pointer; padding: 0;">
+                            <input type="text" id="setting-theme-color" class="input-field" placeholder="#8b5cf6" style="flex: 1;">
+                        </div>
+                    </div>
+                    <div class="form-group mt-3">
+                        <label for="setting-menu-banner">Shop Main Menu Large Banner URL (Image link)</label>
+                        <input type="text" id="setting-menu-banner" class="input-field" placeholder="e.g. https://domain.com/banner.png">
+                    </div>
+                    <div class="form-group mt-3">
+                        <label for="setting-menu-thumbnail">Shop Main Menu Small Thumbnail URL (Image link)</label>
+                        <input type="text" id="setting-menu-thumbnail" class="input-field" placeholder="Leave empty for user's Discord avatar">
+                    </div>
+                    <button class="btn-primary mt-4 w-100" id="save-settings-btn">Save Settings</button>
+                    
+                    <div class="mt-4" style="border-top: 1px solid var(--border-color); padding-top: 20px; display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <h4 style="margin: 0; font-size: 1.1rem;">Manual Database Backup</h4>
+                            <p style="color: var(--text-secondary); font-size: 0.9rem; margin: 5px 0 0 0;">Sends an instant snapshot backup of all JSON databases to your configured backup channel.</p>
+                        </div>
+                        <button class="btn-primary" id="trigger-backup-btn" style="background: var(--success); margin: 0;">Backup Database Now</button>
+                    </div>
+
+                    <div class="mt-4" style="border-top: 1px solid var(--border-color); padding-top: 20px; display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <h4 style="margin: 0; font-size: 1.1rem;">Session & Database Cleaner</h4>
+                            <p style="color: var(--text-secondary); font-size: 0.9rem; margin: 5px 0 0 0;">Instantly logs out all inactive administrators and cleans database session caches.</p>
+                        </div>
+                        <button class="btn-primary" id="clean-sessions-btn" style="background: #e11d48; margin: 0;">Clean Session Cache</button>
+                    </div>
                 </div>
             </div>
         </main>

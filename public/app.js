@@ -70,6 +70,7 @@ function initTabs() {
             if (targetId === 'tab-products') loadProducts();
             if (targetId === 'tab-users') loadUsers();
             if (targetId === 'tab-logs') loadLogs();
+            if (targetId === 'tab-settings') loadSettings();
 
             // Close sidebar on mobile
             document.body.classList.remove('sidebar-open');
@@ -262,47 +263,7 @@ async function loadDashboard() {
             if (statProducts) statProducts.innerText = formatNumber(products.length);
         }
 
-        // Fetch Settings
-        const setRes = await fetch('/api/settings');
-        if (setRes.ok) {
-            const settings = await setRes.json();
-            const rateInput = document.getElementById('setting-rate');
-            const channelInput = document.getElementById('setting-channel');
-            const liveSalesInput = document.getElementById('setting-live-sales');
-            const availableProductsInput = document.getElementById('setting-available-products');
-            const backupChannelInput = document.getElementById('setting-backup-channel');
-            const earnInput = document.getElementById('setting-loyalty-earn');
-            const redeemInput = document.getElementById('setting-loyalty-redeem');
-            const themeColorInput = document.getElementById('setting-theme-color');
-            const themeColorPicker = document.getElementById('setting-theme-color-picker');
-            const menuBannerInput = document.getElementById('setting-menu-banner');
-            const menuThumbnailInput = document.getElementById('setting-menu-thumbnail');
 
-            if (rateInput) rateInput.value = settings.usdt_to_npr_rate || '';
-            if (channelInput) channelInput.value = settings.notification_channel_id || '';
-            if (liveSalesInput) liveSalesInput.value = settings.live_sales_channel_id || '';
-            if (availableProductsInput) availableProductsInput.value = settings.available_products_channel_id || '';
-            if (backupChannelInput) backupChannelInput.value = settings.backup_channel_id || '';
-            if (earnInput) earnInput.value = settings.loyalty_earn_rate || '';
-            if (redeemInput) redeemInput.value = settings.loyalty_redeem_rate || '';
-            
-            if (themeColorInput) {
-                themeColorInput.value = settings.shop_theme_color || '#8b5cf6';
-                if (themeColorPicker) {
-                    themeColorPicker.value = settings.shop_theme_color || '#8b5cf6';
-                    themeColorPicker.oninput = (e) => {
-                        themeColorInput.value = e.target.value;
-                    };
-                    themeColorInput.oninput = (e) => {
-                        if (/^#[0-9A-F]{6}$/i.test(e.target.value)) {
-                            themeColorPicker.value = e.target.value;
-                        }
-                    };
-                }
-            }
-            if (menuBannerInput) menuBannerInput.value = settings.shop_menu_banner || '';
-            if (menuThumbnailInput) menuThumbnailInput.value = settings.shop_menu_thumbnail || '';
-        }
 
         // Fetch Analytics
         const analyticsRes = await fetch('/api/analytics');
@@ -402,7 +363,55 @@ async function loadDashboard() {
         console.error('Dashboard load error:', err);
         showToast('Failed to load dashboard data', 'error');
     }
+}
 
+// ========== Settings ==========
+async function loadSettings() {
+    try {
+        const setRes = await fetch('/api/settings');
+        if (setRes.ok) {
+            const settings = await setRes.json();
+            const rateInput = document.getElementById('setting-rate');
+            const channelInput = document.getElementById('setting-channel');
+            const liveSalesInput = document.getElementById('setting-live-sales');
+            const availableProductsInput = document.getElementById('setting-available-products');
+            const backupChannelInput = document.getElementById('setting-backup-channel');
+            const earnInput = document.getElementById('setting-loyalty-earn');
+            const redeemInput = document.getElementById('setting-loyalty-redeem');
+            const themeColorInput = document.getElementById('setting-theme-color');
+            const themeColorPicker = document.getElementById('setting-theme-color-picker');
+            const menuBannerInput = document.getElementById('setting-menu-banner');
+            const menuThumbnailInput = document.getElementById('setting-menu-thumbnail');
+
+            if (rateInput) rateInput.value = settings.usdt_to_npr_rate || '';
+            if (channelInput) channelInput.value = settings.notification_channel_id || '';
+            if (liveSalesInput) liveSalesInput.value = settings.live_sales_channel_id || '';
+            if (availableProductsInput) availableProductsInput.value = settings.available_products_channel_id || '';
+            if (backupChannelInput) backupChannelInput.value = settings.backup_channel_id || '';
+            if (earnInput) earnInput.value = settings.loyalty_earn_rate || '';
+            if (redeemInput) redeemInput.value = settings.loyalty_redeem_rate || '';
+            
+            if (themeColorInput) {
+                themeColorInput.value = settings.shop_theme_color || '#8b5cf6';
+                if (themeColorPicker) {
+                    themeColorPicker.value = settings.shop_theme_color || '#8b5cf6';
+                    themeColorPicker.oninput = (e) => {
+                        themeColorInput.value = e.target.value;
+                    };
+                    themeColorInput.oninput = (e) => {
+                        if (/^#[0-9A-F]{6}$/i.test(e.target.value)) {
+                            themeColorPicker.value = e.target.value;
+                        }
+                    };
+                }
+            }
+            if (menuBannerInput) menuBannerInput.value = settings.shop_menu_banner || '';
+            if (menuThumbnailInput) menuThumbnailInput.value = settings.shop_menu_thumbnail || '';
+        }
+    } catch (err) {
+        showToast('Failed to load settings', 'error');
+    }
+}
     // Setup Settings Save
     const saveBtn = document.getElementById('save-settings-btn');
     if (saveBtn) {

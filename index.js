@@ -697,7 +697,8 @@ Join our support channel or open a ticket!
         }
 
         if (interaction.isButton() && interaction.customId === 'redeem') {
-            const redeemRate = db.getConfig('loyalty_redeem_rate') !== undefined ? Number(db.getConfig('loyalty_redeem_rate')) : 10;
+            const configVal = db.getConfig('loyalty_redeem_rate');
+            const redeemRate = (configVal !== null && configVal !== undefined) ? Number(configVal) : 10;
             const modal = new ModalBuilder().setCustomId('redeem_modal').setTitle('🏆 Redeem Loyalty Points').addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('points').setLabel(`Points to Redeem (${redeemRate} pts = 1 NPR)`).setStyle(TextInputStyle.Short).setPlaceholder(`e.g., ${redeemRate * 10}`).setRequired(true)));
             await interaction.showModal(modal);
         }
@@ -1007,6 +1008,7 @@ Join our support channel or open a ticket!
         if (interaction.isModalSubmit() && interaction.customId === 'redeem_modal') {
             const pointsToRedeem = parseInt(interaction.fields.getTextInputValue('points'));
             if (isNaN(pointsToRedeem) || pointsToRedeem <= 0) return await interaction.reply({ content: '❌ Invalid points amount.', ...ephemeral });
+            await interaction.deferUpdate();
             try {
                 const result = db.redeemPoints(interaction.user.id, pointsToRedeem);
                 const embed = new EmbedBuilder()
@@ -1028,9 +1030,13 @@ Join our support channel or open a ticket!
                         .setTimestamp()
                 );
                 
-                await interaction.reply({ embeds: [embed], ...ephemeral });
+                await interaction.editReply({ embeds: [embed], components: [getNavRow('back')] });
             } catch (error) {
-                await interaction.reply({ content: `❌ ${error.message}`, ...ephemeral });
+                const errEmbed = new EmbedBuilder()
+                    .setTitle('🏆 Loyalty Points')
+                    .setDescription(`❌ ${error.message}`)
+                    .setColor(0xe74c3c);
+                await interaction.editReply({ embeds: [errEmbed], components: [getNavRow('back')] });
             }
         }
 

@@ -26,6 +26,7 @@ const paybridgeAPI = axios.create({
 });
 
 const ephemeral = { flags: [MessageFlags.Ephemeral] };
+const activeShopSessions = new Map();
 
 const SHOP_PAGE_SIZE = 6;
 const HISTORY_PAGE_SIZE = 5;
@@ -531,6 +532,34 @@ async function renderHistoryPage(interaction, page) {
 
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isChatInputCommand() && !interaction.isButton() && !interaction.isModalSubmit()) return;
+
+    // Ephemeral shop menu session cleaner
+    const isShopInteraction = (interaction.isButton() && (
+        ['start', 'shop', 'balance', 'deposit', 'daily', 'history', 'redeem', 'nav_shop', 'nav_balance', 'nav_history', 'nav_deposit', 'nav_back'].includes(interaction.customId) ||
+        interaction.customId.startsWith('shop_page_') ||
+        interaction.customId.startsWith('history_page_') ||
+        interaction.customId.startsWith('view_') ||
+        interaction.customId.startsWith('buy1_') ||
+        interaction.customId.startsWith('buy_') ||
+        interaction.customId.startsWith('confirmbuy_')
+    )) || (interaction.isModalSubmit() && (
+        interaction.customId === 'redeem_modal' ||
+        interaction.customId.startsWith('purchase_')
+    ));
+
+    if (isShopInteraction) {
+        if (interaction.customId === 'start') {
+            const oldInteraction = activeShopSessions.get(interaction.user.id);
+            if (oldInteraction) {
+                try {
+                    await oldInteraction.deleteReply().catch(() => {});
+                } catch (err) {}
+            }
+            activeShopSessions.set(interaction.user.id, interaction);
+        } else {
+            activeShopSessions.set(interaction.user.id, interaction);
+        }
+    }
 
     try {
         if (interaction.isChatInputCommand() && interaction.commandName === 'announce') {

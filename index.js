@@ -763,7 +763,7 @@ Join our support channel or open a ticket!
 
         if (interaction.isButton() && interaction.customId.startsWith('buy1_')) {
             const productId = interaction.customId.replace('buy1_', '');
-            await interaction.deferReply({ ...ephemeral });
+            await interaction.deferUpdate();
             try {
                 const allProducts = await getMergedProducts();
                 const product = allProducts.find(p => String(p.id) === String(productId));
@@ -932,7 +932,7 @@ Join our support channel or open a ticket!
             const productId = interaction.customId.replace('purchase_', '');
             const quantity = parseInt(interaction.fields.getTextInputValue('qty'));
             if (isNaN(quantity) || quantity <= 0) return await interaction.reply({ content: '❌ Invalid quantity.', ...ephemeral });
-            await interaction.deferReply({ ...ephemeral });
+            await interaction.deferUpdate();
             try {
                 const allProducts = await getMergedProducts();
                 const product = allProducts.find(p => String(p.id) === String(productId));
@@ -1037,7 +1037,7 @@ Join our support channel or open a ticket!
         if (interaction.isModalSubmit() && (interaction.customId === 'deposit_modal' || interaction.customId === 'deposit_modal_nav')) {
             const amount = parseInt(interaction.fields.getTextInputValue('amount'));
             if (amount < 100) return await interaction.reply({ content: '❌ Min 100 NPR', ...ephemeral });
-            await interaction.deferReply({ ...ephemeral });
+            await interaction.deferUpdate();
             const tunnelUrl = process.env.TUNNEL_URL || 'http://localhost:3000';
             try {
                 const session = await paybridgeAPI.post('/checkout', { amount: amount * 100, returnUrl: `${tunnelUrl}/success`, cancelUrl: `${tunnelUrl}/cancel`, metadata: { discordUserId: interaction.user.id, discordUsername: interaction.user.tag, amount } });

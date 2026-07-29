@@ -771,14 +771,39 @@ Join our support channel or open a ticket!
                 db.ensureUser(interaction.user.id, interaction.user.tag);
                 const user = db.getUser(interaction.user.id);
                 if (user.balance_npr < totalCost) {
-                    throw new Error(`Insufficient balance. You need **${totalCost} NPR** but only have **${user.balance_npr} NPR**.`);
+                    const missingAmount = Math.ceil(totalCost - user.balance_npr);
+                    const tunnelUrl = process.env.TUNNEL_URL || 'http://localhost:3000';
+                    const session = await paybridgeAPI.post('/checkout', { 
+                        amount: missingAmount * 100, 
+                        returnUrl: `${tunnelUrl}/success`, 
+                        cancelUrl: `${tunnelUrl}/cancel`, 
+                        metadata: { 
+                            discordUserId: interaction.user.id, 
+                            discordUsername: interaction.user.tag, 
+                            amount: missingAmount,
+                            autoBuyProductId: product.id,
+                            autoBuyQuantity: 1
+                        } 
+                    });
+
+                    const embed = new EmbedBuilder()
+                        .setTitle('💳 INSUFFICIENT BALANCE')
+                        .setDescription(`You need **${totalCost} NPR** but only have **${user.balance_npr} NPR**.\n\nYou are missing **${missingAmount} NPR** for this purchase.\n\nClick the payment button below to deposit the remaining amount and complete your order instantly!`)
+                        .setColor(0xe74c3c);
+                        
+                    const row = new ActionRowBuilder().addComponents(
+                        new ButtonBuilder().setLabel(`Pay ${missingAmount} NPR`).setURL(session.data.checkout_url).setStyle(ButtonStyle.Link),
+                        new ButtonBuilder().setCustomId('nav_shop').setLabel('🔙 Back').setStyle(ButtonStyle.Secondary)
+                    );
+                    
+                    return await interaction.editReply({ embeds: [embed], components: [row] });
                 }
                 
                 const nextBalance = Number((user.balance_npr - totalCost).toFixed(2));
                 
                 const embed = new EmbedBuilder()
                     .setTitle('🛒 CONFIRM YOUR PURCHASE')
-                    .setDescription(`Please verify your order details before completing the purchase.`)
+                    .setDescription(`Please verify your order details before completing the purchase.\n\n⚠️ **IMPORTANT**: Please ensure your Discord DMs are enabled for this server so the bot can instantly deliver your codes!`)
                     .addFields(
                         { name: '📦 Product', value: pData.name, inline: false },
                         { name: '📊 Quantity', value: `\` 1 \``, inline: true },
@@ -915,14 +940,39 @@ Join our support channel or open a ticket!
                 db.ensureUser(interaction.user.id, interaction.user.tag);
                 const user = db.getUser(interaction.user.id);
                 if (user.balance_npr < totalCost) {
-                    throw new Error(`Insufficient balance. You need **${totalCost} NPR** but only have **${user.balance_npr} NPR**.`);
+                    const missingAmount = Math.ceil(totalCost - user.balance_npr);
+                    const tunnelUrl = process.env.TUNNEL_URL || 'http://localhost:3000';
+                    const session = await paybridgeAPI.post('/checkout', { 
+                        amount: missingAmount * 100, 
+                        returnUrl: `${tunnelUrl}/success`, 
+                        cancelUrl: `${tunnelUrl}/cancel`, 
+                        metadata: { 
+                            discordUserId: interaction.user.id, 
+                            discordUsername: interaction.user.tag, 
+                            amount: missingAmount,
+                            autoBuyProductId: product.id,
+                            autoBuyQuantity: quantity
+                        } 
+                    });
+
+                    const embed = new EmbedBuilder()
+                        .setTitle('💳 INSUFFICIENT BALANCE')
+                        .setDescription(`You need **${totalCost} NPR** but only have **${user.balance_npr} NPR**.\n\nYou are missing **${missingAmount} NPR** for this purchase.\n\nClick the payment button below to deposit the remaining amount and complete your order instantly!`)
+                        .setColor(0xe74c3c);
+                        
+                    const row = new ActionRowBuilder().addComponents(
+                        new ButtonBuilder().setLabel(`Pay ${missingAmount} NPR`).setURL(session.data.checkout_url).setStyle(ButtonStyle.Link),
+                        new ButtonBuilder().setCustomId('nav_shop').setLabel('🔙 Back').setStyle(ButtonStyle.Secondary)
+                    );
+                    
+                    return await interaction.editReply({ embeds: [embed], components: [row] });
                 }
                 
                 const nextBalance = Number((user.balance_npr - totalCost).toFixed(2));
                 
                 const embed = new EmbedBuilder()
                     .setTitle('🛒 CONFIRM YOUR PURCHASE')
-                    .setDescription(`Please verify your order details before completing the purchase.`)
+                    .setDescription(`Please verify your order details before completing the purchase.\n\n⚠️ **IMPORTANT**: Please ensure your Discord DMs are enabled for this server so the bot can instantly deliver your codes!`)
                     .addFields(
                         { name: '📦 Product', value: pData.name, inline: false },
                         { name: '📊 Quantity', value: `\` ${quantity} \``, inline: true },

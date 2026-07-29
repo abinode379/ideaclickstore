@@ -470,7 +470,6 @@ async function loadSettings() {
             }
         };
     }
-}
 
 // ========== Products ==========
 async function saveProductOrder(orderIds) {

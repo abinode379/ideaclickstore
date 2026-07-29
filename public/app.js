@@ -273,6 +273,11 @@ async function loadDashboard() {
             const backupChannelInput = document.getElementById('setting-backup-channel');
             const earnInput = document.getElementById('setting-loyalty-earn');
             const redeemInput = document.getElementById('setting-loyalty-redeem');
+            const themeColorInput = document.getElementById('setting-theme-color');
+            const themeColorPicker = document.getElementById('setting-theme-color-picker');
+            const menuBannerInput = document.getElementById('setting-menu-banner');
+            const menuThumbnailInput = document.getElementById('setting-menu-thumbnail');
+
             if (rateInput) rateInput.value = settings.usdt_to_npr_rate || '';
             if (channelInput) channelInput.value = settings.notification_channel_id || '';
             if (liveSalesInput) liveSalesInput.value = settings.live_sales_channel_id || '';
@@ -280,6 +285,23 @@ async function loadDashboard() {
             if (backupChannelInput) backupChannelInput.value = settings.backup_channel_id || '';
             if (earnInput) earnInput.value = settings.loyalty_earn_rate || '';
             if (redeemInput) redeemInput.value = settings.loyalty_redeem_rate || '';
+            
+            if (themeColorInput) {
+                themeColorInput.value = settings.shop_theme_color || '#8b5cf6';
+                if (themeColorPicker) {
+                    themeColorPicker.value = settings.shop_theme_color || '#8b5cf6';
+                    themeColorPicker.oninput = (e) => {
+                        themeColorInput.value = e.target.value;
+                    };
+                    themeColorInput.oninput = (e) => {
+                        if (/^#[0-9A-F]{6}$/i.test(e.target.value)) {
+                            themeColorPicker.value = e.target.value;
+                        }
+                    };
+                }
+            }
+            if (menuBannerInput) menuBannerInput.value = settings.shop_menu_banner || '';
+            if (menuThumbnailInput) menuThumbnailInput.value = settings.shop_menu_thumbnail || '';
         }
 
         // Fetch Analytics
@@ -392,6 +414,9 @@ async function loadDashboard() {
             const backupChannelId = document.getElementById('setting-backup-channel').value;
             const earnRate = parseInt(document.getElementById('setting-loyalty-earn').value);
             const redeemRate = parseInt(document.getElementById('setting-loyalty-redeem').value);
+            const themeColor = document.getElementById('setting-theme-color').value;
+            const menuBanner = document.getElementById('setting-menu-banner').value;
+            const menuThumbnail = document.getElementById('setting-menu-thumbnail').value;
 
             try {
                 const res = await fetch('/api/settings', {
@@ -404,7 +429,10 @@ async function loadDashboard() {
                         available_products_channel_id: availableProductsId,
                         backup_channel_id: backupChannelId,
                         loyalty_earn_rate: isNaN(earnRate) ? null : earnRate,
-                        loyalty_redeem_rate: isNaN(redeemRate) ? null : redeemRate
+                        loyalty_redeem_rate: isNaN(redeemRate) ? null : redeemRate,
+                        shop_theme_color: themeColor,
+                        shop_menu_banner: menuBanner,
+                        shop_menu_thumbnail: menuThumbnail
                     })
                 });
                 if (!res.ok) throw new Error('Failed to save settings');

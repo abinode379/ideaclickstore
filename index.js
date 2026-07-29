@@ -340,7 +340,14 @@ function getShopMainMenuEmbed(interaction) {
     db.ensureUser(interaction.user.id, interaction.user.tag);
     const user = db.getUser(interaction.user.id);
     
-    return new EmbedBuilder()
+    const hexColor = db.getConfig('shop_theme_color') || '#8b5cf6';
+    const colorInt = parseInt(hexColor.replace('#', ''), 16);
+    
+    const bannerUrl = db.getConfig('shop_menu_banner');
+    const customThumbnail = db.getConfig('shop_menu_thumbnail');
+    const thumbnail = customThumbnail || interaction.user.displayAvatarURL({ dynamic: true });
+    
+    const embed = new EmbedBuilder()
         .setTitle('🏪 IdeaClick Store Menu')
         .setDescription(`━━━━━━━━━━━━━━━━━━━━━
 ✨ **Nepal's #1 Automated Digital Shop**
@@ -352,9 +359,15 @@ function getShopMainMenuEmbed(interaction) {
 
 ⚡ **Instant Delivery 24/7** — Digital products are sent directly to your DMs immediately after purchase!
 ━━━━━━━━━━━━━━━━━━━━━`)
-        .setColor(0x8b5cf6)
-        .setThumbnail(interaction.user.displayAvatarURL({ dynamic: true }))
+        .setColor(colorInt)
+        .setThumbnail(thumbnail)
         .setTimestamp();
+        
+    if (bannerUrl) {
+        embed.setImage(bannerUrl);
+    }
+    
+    return embed;
 }
 
 function getNavRow(excludeButton) {
@@ -477,6 +490,8 @@ function getShopPaginationRow(page, totalPages) {
 }
 
 function getShopEmbed() {
+    const hexColor = db.getConfig('shop_theme_color') || '#8b5cf6';
+    const colorInt = parseInt(hexColor.replace('#', ''), 16);
     return new EmbedBuilder()
         .setTitle('🛒 Available Products')
         .setDescription(` **Guide:**
@@ -484,7 +499,7 @@ function getShopEmbed() {
 ⏱️ D/M = Day/Month | 🛡️ NW = No Warranty | FW = Full Warranty
 
 👇 **Tap a product to view details:**`)
-        .setColor(0xFFA500);
+        .setColor(colorInt);
 }
 
 async function renderShopPage(interaction, products, page) {

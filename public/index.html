@@ -123,6 +123,21 @@
                         <label for="setting-loyalty-redeem">Loyalty Point Redemption Rate (Points per 1 NPR)</label>
                         <input type="number" id="setting-loyalty-redeem" class="input-field" placeholder="Default: 10">
                     </div>
+                    <div class="form-group mt-3">
+                        <label for="setting-theme-color">Shop Embed Theme Color (Hex Code)</label>
+                        <div style="display: flex; gap: 10px; align-items: center;">
+                            <input type="color" id="setting-theme-color-picker" style="border: none; background: transparent; width: 40px; height: 40px; cursor: pointer; padding: 0;">
+                            <input type="text" id="setting-theme-color" class="input-field" placeholder="#8b5cf6" style="flex: 1;">
+                        </div>
+                    </div>
+                    <div class="form-group mt-3">
+                        <label for="setting-menu-banner">Shop Main Menu Large Banner URL (Image link)</label>
+                        <input type="text" id="setting-menu-banner" class="input-field" placeholder="e.g. https://domain.com/banner.png">
+                    </div>
+                    <div class="form-group mt-3">
+                        <label for="setting-menu-thumbnail">Shop Main Menu Small Thumbnail URL (Image link)</label>
+                        <input type="text" id="setting-menu-thumbnail" class="input-field" placeholder="Leave empty for user's Discord avatar">
+                    </div>
                     <button class="btn-primary mt-3" id="save-settings-btn">Save Settings</button>
                     
                     <div class="mt-4" style="border-top: 1px solid var(--border-color); padding-top: 20px; display: flex; justify-content: space-between; align-items: center;">

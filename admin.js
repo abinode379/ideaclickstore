@@ -139,12 +139,15 @@ app.get('/api/settings', ensureAuthAPI, (req, res) => {
         available_products_channel_id: db.getConfig('available_products_channel_id'),
         backup_channel_id: db.getConfig('backup_channel_id'),
         loyalty_earn_rate: db.getConfig('loyalty_earn_rate') !== undefined ? db.getConfig('loyalty_earn_rate') : 10,
-        loyalty_redeem_rate: db.getConfig('loyalty_redeem_rate') !== undefined ? db.getConfig('loyalty_redeem_rate') : 10
+        loyalty_redeem_rate: db.getConfig('loyalty_redeem_rate') !== undefined ? db.getConfig('loyalty_redeem_rate') : 10,
+        shop_theme_color: db.getConfig('shop_theme_color') || '#8b5cf6',
+        shop_menu_banner: db.getConfig('shop_menu_banner') || '',
+        shop_menu_thumbnail: db.getConfig('shop_menu_thumbnail') || ''
     });
 });
 
 app.post('/api/settings', ensureAuthAPI, (req, res) => {
-    const { usdt_to_npr_rate, notification_channel_id, live_sales_channel_id, available_products_channel_id, backup_channel_id, loyalty_earn_rate, loyalty_redeem_rate } = req.body;
+    const { usdt_to_npr_rate, notification_channel_id, live_sales_channel_id, available_products_channel_id, backup_channel_id, loyalty_earn_rate, loyalty_redeem_rate, shop_theme_color, shop_menu_banner, shop_menu_thumbnail } = req.body;
     if (usdt_to_npr_rate !== undefined) db.setConfig('usdt_to_npr_rate', usdt_to_npr_rate);
     if (notification_channel_id !== undefined) db.setConfig('notification_channel_id', notification_channel_id);
     if (live_sales_channel_id !== undefined) db.setConfig('live_sales_channel_id', live_sales_channel_id);
@@ -152,6 +155,9 @@ app.post('/api/settings', ensureAuthAPI, (req, res) => {
     if (backup_channel_id !== undefined) db.setConfig('backup_channel_id', backup_channel_id);
     if (loyalty_earn_rate !== undefined) db.setConfig('loyalty_earn_rate', loyalty_earn_rate);
     if (loyalty_redeem_rate !== undefined) db.setConfig('loyalty_redeem_rate', loyalty_redeem_rate);
+    if (shop_theme_color !== undefined) db.setConfig('shop_theme_color', shop_theme_color);
+    if (shop_menu_banner !== undefined) db.setConfig('shop_menu_banner', shop_menu_banner);
+    if (shop_menu_thumbnail !== undefined) db.setConfig('shop_menu_thumbnail', shop_menu_thumbnail);
     
     db.appendLog({ action: 'settings_update', details: req.body });
     
@@ -166,7 +172,8 @@ app.post('/api/settings', ensureAuthAPI, (req, res) => {
             { name: 'Catalog Channel', value: available_products_channel_id ? `\` ${available_products_channel_id} \`` : 'N/A', inline: true },
             { name: 'Backup Channel', value: backup_channel_id ? `\` ${backup_channel_id} \`` : 'N/A', inline: true },
             { name: 'Loyalty Earn Rate', value: loyalty_earn_rate ? `\` ${loyalty_earn_rate} NPR spent = 1 pt \`` : 'N/A', inline: true },
-            { name: 'Loyalty Redeem Rate', value: loyalty_redeem_rate ? `\` ${loyalty_redeem_rate} pts = 1 NPR \`` : 'N/A', inline: true }
+            { name: 'Loyalty Redeem Rate', value: loyalty_redeem_rate ? `\` ${loyalty_redeem_rate} pts = 1 NPR \`` : 'N/A', inline: true },
+            { name: 'Theme Color', value: shop_theme_color ? `\` ${shop_theme_color} \`` : 'N/A', inline: true }
         ],
         timestamp: new Date().toISOString()
     });

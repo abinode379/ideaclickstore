@@ -295,6 +295,41 @@ app.post('/api/products/order', ensureAuthAPI, (req, res) => {
     res.json({ success: true });
 });
 
+app.get('/api/products/local/:id/stock', ensureAuthAPI, (req, res) => {
+    const products = db.getLocalProducts();
+    const product = products.find(p => String(p.id) === String(req.params.id));
+    if (!product) return res.status(404).json({ error: 'Product not found' });
+    res.json({ keys: product.stock || [] });
+});
+
+app.post('/api/products/local/:id/stock/delete', ensureAuthAPI, (req, res) => {
+    const { index } = req.body;
+    const products = db.getLocalProducts();
+    const product = products.find(p => String(p.id) === String(req.params.id));
+    if (!product) return res.status(404).json({ error: 'Product not found' });
+    
+    if (Array.isArray(product.stock) && index >= 0 && index < product.stock.length) {
+        const removed = product.stock.splice(index, 1)[0];
+        db.saveLocalProducts(products);
+        db.appendLog({ action: 'stock_key_delete', product_id: req.params.id, key: removed });
+        return res.json({ success: true, keys: product.stock });
+    }
+    res.status(400).json({ error: 'Invalid key index' });
+});
+
+app.post('/api/clean-sessions', ensureAuthAPI, (req, res) => {
+    try {
+        const fs = require('fs');
+        if (fs.existsSync('sessions.json')) {
+            fs.writeFileSync('sessions.json', JSON.stringify({}, null, 2));
+        }
+        db.appendLog({ action: 'sessions_cleaned', details: { admin: req.session?.admin?.username || 'System' } });
+        res.json({ success: true, message: 'Expired login sessions successfully cleared!' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 app.post('/api/product', ensureAuthAPI, (req, res) => {
     const { product_id, name, description, price, hidden } = req.body;
     if (!product_id) return res.status(400).json({ error: 'Missing product_id' });

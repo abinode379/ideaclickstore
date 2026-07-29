@@ -298,19 +298,26 @@ async function loadDashboard() {
                 if (!data.popularProducts || data.popularProducts.length === 0) {
                     topList.innerHTML = '<div style="color: var(--text-secondary); text-align: center; padding: 1rem;">No sales recorded yet.</div>';
                 } else {
+                    const totalQtySold = data.popularProducts.reduce((sum, p) => sum + p.qty, 0);
                     data.popularProducts.forEach((p, idx) => {
+                        const percentage = totalQtySold > 0 ? Math.round((p.qty / totalQtySold) * 100) : 0;
                         const item = document.createElement('div');
                         item.className = 'glass-card';
-                        item.style.padding = '0.75rem 1rem';
+                        item.style.padding = '1rem';
                         item.style.display = 'flex';
-                        item.style.justifyContent = 'space-between';
-                        item.style.alignItems = 'center';
+                        item.style.flexDirection = 'column';
+                        item.style.gap = '8px';
                         item.innerHTML = `
-                            <div style="display: flex; align-items: center; gap: 8px;">
-                                <span style="font-weight: 700; color: var(--primary); font-size: 1.125rem;">#${idx + 1}</span>
-                                <span style="font-weight: 500; font-size: 0.875rem;">${p.name}</span>
+                            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.875rem;">
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <span style="font-weight: 700; color: var(--primary); font-size: 1.125rem;">#${idx + 1}</span>
+                                    <span style="font-weight: 500;">${p.name}</span>
+                                </div>
+                                <span class="badge in-stock" style="font-size: 0.75rem;">${p.qty} sold (${percentage}%)</span>
                             </div>
-                            <span class="badge in-stock" style="font-size: 0.75rem;">${p.qty} sold</span>
+                            <div style="background: rgba(255, 255, 255, 0.08); height: 8px; border-radius: 4px; overflow: hidden; width: 100%;">
+                                <div style="background: linear-gradient(90deg, var(--primary), #a78bfa); height: 100%; width: ${percentage}%; border-radius: 4px;"></div>
+                            </div>
                         `;
                         topList.appendChild(item);
                     });
@@ -618,7 +625,54 @@ async function loadProducts() {
                 }
             });
 
+            // Reorder Controls
+            const reorderContainer = document.createElement('div');
+            reorderContainer.style.display = 'flex';
+            reorderContainer.style.gap = '8px';
+            reorderContainer.className = 'mt-2';
+
+            const upBtn = document.createElement('button');
+            upBtn.className = 'btn-secondary w-50';
+            upBtn.innerText = '🔼 Up';
+            upBtn.disabled = products.indexOf(p) === 0;
+            upBtn.onclick = async () => {
+                const index = products.indexOf(p);
+                if (index > 0) {
+                    const temp = products[index];
+                    products[index] = products[index - 1];
+                    products[index - 1] = temp;
+                    await saveProductOrder(products.map(item => String(item.id)));
+                }
+            };
+
+            const downBtn = document.createElement('button');
+            downBtn.className = 'btn-secondary w-50';
+            downBtn.innerText = '🔽 Down';
+            downBtn.disabled = products.indexOf(p) === products.length - 1;
+            downBtn.onclick = async () => {
+                const index = products.indexOf(p);
+                if (index < products.length - 1) {
+                    const temp = products[index];
+                    products[index] = products[index + 1];
+                    products[index + 1] = temp;
+                    await saveProductOrder(products.map(item => String(item.id)));
+                }
+            };
+
+            reorderContainer.appendChild(upBtn);
+            reorderContainer.appendChild(downBtn);
+            card.appendChild(reorderContainer);
+
             if (p.is_local) {
+                // Stock Manager Button
+                const stockBtn = document.createElement('button');
+                stockBtn.className = 'btn-secondary w-100 mt-2';
+                stockBtn.innerText = '🔑 Manage Stock Keys';
+                stockBtn.onclick = () => {
+                    openStockModal(p.id, displayName);
+                };
+                card.appendChild(stockBtn);
+
                 const delBtn = document.createElement('button');
                 delBtn.className = 'btn-secondary w-100 mt-2';
                 delBtn.style.color = '#ef4444';
@@ -879,4 +933,101 @@ function renderLogs(logs) {
 
         feed.appendChild(entry);
     });
+}
+
+// Clean Session Cache Button Event
+const cleanSessionsBtn = document.getElementById('clean-sessions-btn');
+if (cleanSessionsBtn) {
+    cleanSessionsBtn.onclick = async () => {
+        if (!confirm('Are you sure you want to log out all other administrators and clear database session caches?')) return;
+        cleanSessionsBtn.disabled = true;
+        cleanSessionsBtn.innerText = 'Clearing sessions...';
+        try {
+            const res = await fetch('/api/clean-sessions', { method: 'POST' });
+            if (!res.ok) throw new Error('Clean session failed');
+            showToast('All login sessions successfully cleared!', 'success');
+        } catch (err) {
+            showToast(err.message, 'error');
+        } finally {
+            cleanSessionsBtn.disabled = false;
+            cleanSessionsBtn.innerText = 'Clean Session Cache';
+        }
+    };
+}
+
+// Manage Stock Keys Modal Events
+const stockModalOverlay = document.getElementById('stock-modal-overlay');
+const stockModal = document.getElementById('stock-modal');
+const closeStockModalBtn = document.getElementById('close-stock-modal-btn');
+
+if (closeStockModalBtn) {
+    closeStockModalBtn.onclick = () => {
+        stockModalOverlay.style.display = 'none';
+        stockModal.style.display = 'none';
+    };
+}
+if (stockModalOverlay) {
+    stockModalOverlay.onclick = () => {
+        stockModalOverlay.style.display = 'none';
+        stockModal.style.display = 'none';
+    };
+}
+
+async function openStockModal(productId, productName) {
+    const titleEl = document.getElementById('stock-modal-product-name');
+    const container = document.getElementById('stock-keys-container');
+    if (titleEl) titleEl.innerText = productName;
+    if (container) container.innerHTML = '<div style="text-align:center; padding:1rem;">Loading keys...</div>';
+
+    stockModalOverlay.style.display = 'block';
+    stockModal.style.display = 'block';
+
+    try {
+        const res = await fetch(`/api/products/local/${productId}/stock`);
+        if (!res.ok) throw new Error('Failed to load keys');
+        const data = await res.json();
+        
+        container.innerHTML = '';
+        if (!data.keys || data.keys.length === 0) {
+            container.innerHTML = '<div style="text-align:center; color: var(--text-secondary); padding:1rem;">No keys in stock.</div>';
+            return;
+        }
+
+        data.keys.forEach((key, idx) => {
+            const row = document.createElement('div');
+            row.style.display = 'flex';
+            row.style.justifyContent = 'space-between';
+            row.style.alignItems = 'center';
+            row.style.padding = '8px 12px';
+            row.style.background = 'rgba(255,255,255,0.04)';
+            row.style.borderRadius = '4px';
+            row.style.border = '1px solid var(--border-color)';
+            
+            row.innerHTML = `
+                <span style="font-family: monospace; font-size: 0.9rem; word-break: break-all; margin-right: 10px;">${key}</span>
+                <button class="btn-secondary" style="color:#ef4444; border-color:#fee2e2; padding: 4px 8px; font-size: 0.8rem; flex-shrink: 0;">Delete</button>
+            `;
+
+            row.querySelector('button').onclick = async () => {
+                if (!confirm('Are you sure you want to delete this stock key?')) return;
+                try {
+                    const delRes = await fetch(`/api/products/local/${productId}/stock/delete`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ index: idx })
+                    });
+                    if (!delRes.ok) throw new Error('Failed to delete key');
+                    showToast('Stock key deleted', 'success');
+                    openStockModal(productId, productName); // Reload keys list
+                    loadProducts(); // Refresh stock badge on main view
+                } catch (err) {
+                    showToast(err.message, 'error');
+                }
+            };
+
+            container.appendChild(row);
+        });
+    } catch (err) {
+        container.innerHTML = `<div style="text-align:center; color:var(--danger); padding:1rem;">${err.message}</div>`;
+    }
 }

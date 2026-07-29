@@ -545,20 +545,23 @@ client.on('interactionCreate', async (interaction) => {
     )) || (interaction.isModalSubmit() && (
         interaction.customId === 'redeem_modal' ||
         interaction.customId.startsWith('purchase_')
+    )) || (interaction.isChatInputCommand() && (
+        ['shop', 'balance', 'deposit', 'history', 'daily'].includes(interaction.commandName)
     ));
 
     if (isShopInteraction) {
-        if (interaction.customId === 'start') {
+        const isEntryPoint = (interaction.isChatInputCommand() && ['shop', 'balance', 'deposit', 'history', 'daily'].includes(interaction.commandName)) ||
+                             (interaction.isButton() && interaction.customId === 'start');
+
+        if (isEntryPoint) {
             const oldInteraction = activeShopSessions.get(interaction.user.id);
             if (oldInteraction) {
                 try {
                     await oldInteraction.deleteReply().catch(() => {});
                 } catch (err) {}
             }
-            activeShopSessions.set(interaction.user.id, interaction);
-        } else {
-            activeShopSessions.set(interaction.user.id, interaction);
         }
+        activeShopSessions.set(interaction.user.id, interaction);
     }
 
     try {

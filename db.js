@@ -85,7 +85,8 @@ function purchaseTransaction(discordId, productName, qty, totalCost) {
     if (user.balance_npr < totalCost) throw new Error('Insufficient balance');
 
     user.balance_npr = Number((user.balance_npr - totalCost).toFixed(2));
-    const pointsEarned = Math.floor(totalCost / 10);
+    const earnRate = getConfig('loyalty_earn_rate') !== undefined ? Number(getConfig('loyalty_earn_rate')) : 10;
+    const pointsEarned = earnRate > 0 ? Math.floor(totalCost / earnRate) : 0;
     user.loyalty_points = (user.loyalty_points || 0) + pointsEarned;
     
     if (!Array.isArray(user.purchase_history)) {
@@ -121,8 +122,9 @@ function redeemPoints(discordId, pointsToRedeem) {
     if (!user) throw new Error('User not found');
     if ((user.loyalty_points || 0) < pointsToRedeem) throw new Error('Insufficient points');
 
-    const nprEarned = Math.floor(pointsToRedeem / 10);
-    if (nprEarned < 1) throw new Error('Minimum redeem is 10 points');
+    const redeemRate = getConfig('loyalty_redeem_rate') !== undefined ? Number(getConfig('loyalty_redeem_rate')) : 10;
+    const nprEarned = redeemRate > 0 ? Math.floor(pointsToRedeem / redeemRate) : 0;
+    if (nprEarned < 1) throw new Error(`Minimum redeem is ${redeemRate} points`);
 
     user.loyalty_points = (user.loyalty_points || 0) - pointsToRedeem;
     user.balance_npr = Number(((user.balance_npr || 0) + nprEarned).toFixed(2));

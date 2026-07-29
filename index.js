@@ -694,7 +694,8 @@ Join our support channel or open a ticket!
         }
 
         if (interaction.isButton() && interaction.customId === 'redeem') {
-            const modal = new ModalBuilder().setCustomId('redeem_modal').setTitle('🏆 Redeem Loyalty Points').addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('points').setLabel('Points to Redeem (10 pts = 1 NPR)').setStyle(TextInputStyle.Short).setPlaceholder('e.g., 100').setRequired(true)));
+            const redeemRate = db.getConfig('loyalty_redeem_rate') !== undefined ? Number(db.getConfig('loyalty_redeem_rate')) : 10;
+            const modal = new ModalBuilder().setCustomId('redeem_modal').setTitle('🏆 Redeem Loyalty Points').addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('points').setLabel(`Points to Redeem (${redeemRate} pts = 1 NPR)`).setStyle(TextInputStyle.Short).setPlaceholder(`e.g., ${redeemRate * 10}`).setRequired(true)));
             await interaction.showModal(modal);
         }
 

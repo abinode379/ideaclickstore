@@ -136,16 +136,20 @@ app.get('/api/settings', ensureAuthAPI, (req, res) => {
         usdt_to_npr_rate: db.getConfig('usdt_to_npr_rate'),
         notification_channel_id: db.getConfig('notification_channel_id'),
         live_sales_channel_id: db.getConfig('live_sales_channel_id'),
-        available_products_channel_id: db.getConfig('available_products_channel_id')
+        available_products_channel_id: db.getConfig('available_products_channel_id'),
+        loyalty_earn_rate: db.getConfig('loyalty_earn_rate') !== undefined ? db.getConfig('loyalty_earn_rate') : 10,
+        loyalty_redeem_rate: db.getConfig('loyalty_redeem_rate') !== undefined ? db.getConfig('loyalty_redeem_rate') : 10
     });
 });
 
 app.post('/api/settings', ensureAuthAPI, (req, res) => {
-    const { usdt_to_npr_rate, notification_channel_id, live_sales_channel_id, available_products_channel_id } = req.body;
+    const { usdt_to_npr_rate, notification_channel_id, live_sales_channel_id, available_products_channel_id, loyalty_earn_rate, loyalty_redeem_rate } = req.body;
     if (usdt_to_npr_rate !== undefined) db.setConfig('usdt_to_npr_rate', usdt_to_npr_rate);
     if (notification_channel_id !== undefined) db.setConfig('notification_channel_id', notification_channel_id);
     if (live_sales_channel_id !== undefined) db.setConfig('live_sales_channel_id', live_sales_channel_id);
     if (available_products_channel_id !== undefined) db.setConfig('available_products_channel_id', available_products_channel_id);
+    if (loyalty_earn_rate !== undefined) db.setConfig('loyalty_earn_rate', loyalty_earn_rate);
+    if (loyalty_redeem_rate !== undefined) db.setConfig('loyalty_redeem_rate', loyalty_redeem_rate);
     
     db.appendLog({ action: 'settings_update', details: req.body });
     
@@ -157,7 +161,9 @@ app.post('/api/settings', ensureAuthAPI, (req, res) => {
             { name: 'Exchange Rate', value: usdt_to_npr_rate ? `\` ${usdt_to_npr_rate} NPR \`` : 'N/A', inline: true },
             { name: 'Notification Channel', value: notification_channel_id ? `\` ${notification_channel_id} \`` : 'N/A', inline: true },
             { name: 'Live Sales Channel', value: live_sales_channel_id ? `\` ${live_sales_channel_id} \`` : 'N/A', inline: true },
-            { name: 'Catalog Channel', value: available_products_channel_id ? `\` ${available_products_channel_id} \`` : 'N/A', inline: true }
+            { name: 'Catalog Channel', value: available_products_channel_id ? `\` ${available_products_channel_id} \`` : 'N/A', inline: true },
+            { name: 'Loyalty Earn Rate', value: loyalty_earn_rate ? `\` ${loyalty_earn_rate} NPR spent = 1 pt \`` : 'N/A', inline: true },
+            { name: 'Loyalty Redeem Rate', value: loyalty_redeem_rate ? `\` ${loyalty_redeem_rate} pts = 1 NPR \`` : 'N/A', inline: true }
         ],
         timestamp: new Date().toISOString()
     });

@@ -270,10 +270,14 @@ async function loadDashboard() {
             const channelInput = document.getElementById('setting-channel');
             const liveSalesInput = document.getElementById('setting-live-sales');
             const availableProductsInput = document.getElementById('setting-available-products');
+            const earnInput = document.getElementById('setting-loyalty-earn');
+            const redeemInput = document.getElementById('setting-loyalty-redeem');
             if (rateInput) rateInput.value = settings.usdt_to_npr_rate || '';
             if (channelInput) channelInput.value = settings.notification_channel_id || '';
             if (liveSalesInput) liveSalesInput.value = settings.live_sales_channel_id || '';
             if (availableProductsInput) availableProductsInput.value = settings.available_products_channel_id || '';
+            if (earnInput) earnInput.value = settings.loyalty_earn_rate || '';
+            if (redeemInput) redeemInput.value = settings.loyalty_redeem_rate || '';
         }
 
         // Fetch Analytics
@@ -376,6 +380,8 @@ async function loadDashboard() {
             const channelId = document.getElementById('setting-channel').value;
             const liveSalesId = document.getElementById('setting-live-sales').value;
             const availableProductsId = document.getElementById('setting-available-products').value;
+            const earnRate = parseInt(document.getElementById('setting-loyalty-earn').value);
+            const redeemRate = parseInt(document.getElementById('setting-loyalty-redeem').value);
 
             try {
                 const res = await fetch('/api/settings', {
@@ -385,7 +391,9 @@ async function loadDashboard() {
                         usdt_to_npr_rate: rate, 
                         notification_channel_id: channelId,
                         live_sales_channel_id: liveSalesId,
-                        available_products_channel_id: availableProductsId
+                        available_products_channel_id: availableProductsId,
+                        loyalty_earn_rate: isNaN(earnRate) ? null : earnRate,
+                        loyalty_redeem_rate: isNaN(redeemRate) ? null : redeemRate
                     })
                 });
                 if (!res.ok) throw new Error('Failed to save settings');
@@ -663,14 +671,21 @@ function renderUsers(users) {
         const historyArr = u.purchase_history || [];
         const historyCount = historyArr.length;
 
-        let historyHTML = '<div class="user-history" style="display:none;">';
+        let historyHTML = '<div class="user-history" style="display:none; padding: 15px; border-top: 1px solid var(--border-color);">';
         if (historyCount > 0) {
+            historyHTML += `
+                <input type="text" class="input-field history-search-input mb-3" style="padding: 6px 12px; font-size: 0.85rem;" placeholder="Search purchases by product name or date...">
+                <div class="history-items-container">
+            `;
             historyArr.forEach(ph => {
-                historyHTML += `<div class="history-item">
-                    <span><strong>${ph.product || ph.item_name || 'Unknown'}</strong> — Qty: ${ph.quantity || 1} — ${ph.price || 0} NPR</span>
-                    <span class="log-time">${formatDate(ph.date)}</span>
+                const prodName = ph.product || ph.item_name || 'Unknown';
+                const formattedDate = formatDate(ph.date);
+                historyHTML += `<div class="history-item" data-product="${prodName.toLowerCase()}" data-date="${formattedDate.toLowerCase()}">
+                    <span><strong>${prodName}</strong> — Qty: ${ph.quantity || 1} — ${ph.price || 0} NPR</span>
+                    <span class="log-time">${formattedDate}</span>
                 </div>`;
             });
+            historyHTML += `</div>`;
         } else {
             historyHTML += '<div class="history-item" style="color: var(--text-secondary);">No purchases yet.</div>';
         }
@@ -706,6 +721,23 @@ function renderUsers(users) {
                 e.target.innerText = 'View History';
             }
         });
+
+        const searchInput = card.querySelector('.history-search-input');
+        if (searchInput) {
+            searchInput.addEventListener('input', (e) => {
+                const query = e.target.value.toLowerCase().trim();
+                const items = card.querySelectorAll('.history-item');
+                items.forEach(item => {
+                    const prod = item.getAttribute('data-product') || '';
+                    const dt = item.getAttribute('data-date') || '';
+                    if (prod.includes(query) || dt.includes(query)) {
+                        item.style.display = 'flex';
+                    } else {
+                        item.style.display = 'none';
+                    }
+                });
+            });
+        }
 
         card.querySelector('.adjust-balance-btn').addEventListener('click', () => {
             openBalanceModal(u.discord_id, u.username || u.discord_id, u.balance_npr || 0);

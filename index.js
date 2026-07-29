@@ -327,6 +327,27 @@ client.once('clientReady', async () => {
     setInterval(runDailyBackup, 24 * 60 * 60 * 1000);
 });
 
+function getShopMainMenuEmbed(interaction) {
+    db.ensureUser(interaction.user.id, interaction.user.tag);
+    const user = db.getUser(interaction.user.id);
+    
+    return new EmbedBuilder()
+        .setTitle('🏪 IdeaClick Store Menu')
+        .setDescription(`━━━━━━━━━━━━━━━━━━━━━
+✨ **Nepal's #1 Automated Digital Shop**
+
+👤 **Account Summary:**
+• Discord: <@${interaction.user.id}>
+• 💰 Balance: **${user.balance_npr} NPR**
+• 🏆 Loyalty Points: **${user.loyalty_points || 0} pts**
+
+⚡ **Instant Delivery 24/7** — Digital products are sent directly to your DMs immediately after purchase!
+━━━━━━━━━━━━━━━━━━━━━`)
+        .setColor(0x8b5cf6)
+        .setThumbnail(interaction.user.displayAvatarURL({ dynamic: true }))
+        .setTimestamp();
+}
+
 function getNavRow(excludeButton) {
     const row = new ActionRowBuilder();
     const buttons = [
@@ -576,8 +597,8 @@ Join our support channel or open a ticket!
         }
 
         if (interaction.isButton() && interaction.customId === 'start') {
-            const mainMenuEmbed = new EmbedBuilder().setTitle('🏪 Shop Menu').setDescription('Choose an option below:').setColor(0x0099FF);
-            await interaction.reply({ embeds: [mainMenuEmbed], components: getMainMenuRows(), ...ephemeral });
+            const embed = getShopMainMenuEmbed(interaction);
+            await interaction.reply({ embeds: [embed], components: getMainMenuRows(), ...ephemeral });
         }
 
         if (interaction.isButton() && interaction.customId === 'shop') {
@@ -668,8 +689,8 @@ Join our support channel or open a ticket!
         }
 
         if (interaction.isButton() && interaction.customId === 'nav_back') {
-            const mainMenuEmbed = new EmbedBuilder().setTitle('🏪 Shop Menu').setDescription('Choose an option below:').setColor(0x0099FF);
-            await interaction.update({ embeds: [mainMenuEmbed], components: getMainMenuRows() });
+            const embed = getShopMainMenuEmbed(interaction);
+            await interaction.update({ embeds: [embed], components: getMainMenuRows() });
         }
 
         if (interaction.isButton() && interaction.customId.startsWith('shop_page_')) {
@@ -694,12 +715,57 @@ Join our support channel or open a ticket!
             if (!product) return await interaction.reply({ content: '❌ Not found', ...ephemeral });
             const pData = getProductData(product);
             const stockText = product.infinite_stock ? 'Infinite' : String(product.stock ?? 0);
-            const embed = new EmbedBuilder().setTitle(`📦 ${pData.name}`).setDescription(pData.description).addFields({ name: ' Price', value: `${pData.price} NPR`, inline: true }, { name: '📦 Stock', value: stockText, inline: true }).setColor((product.stock ?? 0) > 0 || product.infinite_stock ? 0x00FF00 : 0xFF0000);
+            const embed = new EmbedBuilder().setTitle(`📦 ${pData.name}`).setDescription(pData.description).addFields({ name: ' Price', value: `${pData.price} NPR`, inline: true }, { name: '📦 Stock', value: stockText, inline: true }).setColor((product.stock ?? 0) > 0 || product.infinite_stock ? 0x8b5cf6 : 0xe74c3c);
             const row = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId(`buy_${product.id}`).setLabel('🛒 Buy').setStyle(ButtonStyle.Success).setDisabled((product.stock ?? 0) === 0 && !product.infinite_stock),
-                new ButtonBuilder().setCustomId('nav_shop').setLabel('🔙 Back to Shop').setStyle(ButtonStyle.Secondary)
+                new ButtonBuilder().setCustomId(`buy1_${product.id}`).setLabel('🛒 Buy 1 Unit').setStyle(ButtonStyle.Success).setDisabled((product.stock ?? 0) === 0 && !product.infinite_stock),
+                new ButtonBuilder().setCustomId(`buy_${product.id}`).setLabel('🛍️ Buy Multiple').setStyle(ButtonStyle.Primary).setDisabled((product.stock ?? 0) === 0 && !product.infinite_stock),
+                new ButtonBuilder().setCustomId('nav_shop').setLabel('🔙 Back').setStyle(ButtonStyle.Secondary)
             );
             await interaction.update({ embeds: [embed], components: [row] });
+        }
+
+        if (interaction.isButton() && interaction.customId.startsWith('buy1_')) {
+            const productId = interaction.customId.replace('buy1_', '');
+            await interaction.deferReply({ ...ephemeral });
+            try {
+                const allProducts = await getMergedProducts();
+                const product = allProducts.find(p => String(p.id) === String(productId));
+                if (!product) throw new Error('Product not found');
+                const pData = getProductData(product);
+                const totalCost = Number(pData.price) * 1;
+                
+                db.ensureUser(interaction.user.id, interaction.user.tag);
+                const user = db.getUser(interaction.user.id);
+                if (user.balance_npr < totalCost) {
+                    throw new Error(`Insufficient balance. You need **${totalCost} NPR** but only have **${user.balance_npr} NPR**.`);
+                }
+                
+                const nextBalance = Number((user.balance_npr - totalCost).toFixed(2));
+                
+                const embed = new EmbedBuilder()
+                    .setTitle('🛒 CONFIRM YOUR PURCHASE')
+                    .setDescription(`Please verify your order details before completing the purchase.`)
+                    .addFields(
+                        { name: '📦 Product', value: pData.name, inline: false },
+                        { name: '📊 Quantity', value: `\` 1 \``, inline: true },
+                        { name: '💵 Price per Unit', value: `\` ${pData.price} NPR \``, inline: true },
+                        { name: '💰 Total Price', value: `\` ${totalCost} NPR \``, inline: false },
+                        { name: '💳 Balance Before', value: `\` ${user.balance_npr} NPR \``, inline: true },
+                        { name: '💳 Balance After', value: `**${nextBalance} NPR**`, inline: true }
+                    )
+                    .setColor(0x8b5cf6)
+                    .setTimestamp();
+                    
+                const row = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder().setCustomId(`confirmbuy_${productId}_1`).setLabel('✅ Confirm Order').setStyle(ButtonStyle.Success),
+                    new ButtonBuilder().setCustomId('nav_shop').setLabel('❌ Cancel').setStyle(ButtonStyle.Danger)
+                );
+                
+                await interaction.editReply({ embeds: [embed], components: [row] });
+            } catch (err) {
+                await interaction.editReply({ content: `❌ ${err.message}` });
+            }
+            return;
         }
 
         if (interaction.isButton() && interaction.customId.startsWith('buy_')) {

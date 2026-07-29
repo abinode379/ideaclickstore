@@ -350,20 +350,35 @@ function getShopMainMenuEmbed(interaction) {
 }
 
 function getNavRow(excludeButton) {
-    const row = new ActionRowBuilder();
-    const buttons = [
+    const row1 = new ActionRowBuilder();
+    const row2 = new ActionRowBuilder();
+    
+    const buttons1 = [
         { id: 'nav_shop', label: '🛒 Shop', style: ButtonStyle.Primary },
         { id: 'nav_balance', label: '💰 Balance', style: ButtonStyle.Success },
         { id: 'nav_deposit', label: '📥 Deposit', style: ButtonStyle.Secondary },
+        { id: 'daily', label: '🎁 Daily', style: ButtonStyle.Success }
+    ];
+    
+    const buttons2 = [
         { id: 'nav_history', label: '📜 History', style: ButtonStyle.Secondary },
+        { id: 'redeem', label: '🏆 Redeem', style: ButtonStyle.Secondary },
         { id: 'nav_back', label: '🔙 Back', style: ButtonStyle.Danger }
     ];
-    buttons.forEach(btn => {
-        if (btn.id !== `nav_${excludeButton}`) {
-            row.addComponents(new ButtonBuilder().setCustomId(btn.id).setLabel(btn.label).setStyle(btn.style));
+
+    buttons1.forEach(btn => {
+        if (btn.id !== `nav_${excludeButton}` && btn.id !== excludeButton) {
+            row1.addComponents(new ButtonBuilder().setCustomId(btn.id).setLabel(btn.label).setStyle(btn.style));
         }
     });
-    return row;
+
+    buttons2.forEach(btn => {
+        if (btn.id !== `nav_${excludeButton}` && btn.id !== excludeButton) {
+            row2.addComponents(new ButtonBuilder().setCustomId(btn.id).setLabel(btn.label).setStyle(btn.style));
+        }
+    });
+
+    return [row1, row2];
 }
 
 function getMainMenuRows() {
@@ -473,7 +488,7 @@ async function renderShopPage(interaction, products, page) {
     if (totalPages > 1) {
         rows.push(getShopPaginationRow(page, totalPages));
     }
-    rows.push(getNavRow('shop'));
+    rows.push(...getNavRow('shop'));
     
     const embed = getShopEmbed();
     if (totalPages > 1) {
@@ -524,7 +539,7 @@ async function renderHistoryPage(interaction, page) {
                 .setDisabled(page >= totalPages - 1)
         ));
     }
-    components.push(getNavRow('history'));
+    components.push(...getNavRow('history'));
     
     await interaction.update({ embeds: [embed], components });
 }
@@ -644,7 +659,7 @@ Join our support channel or open a ticket!
         if (interaction.isButton() && interaction.customId === 'balance') {
             const user = db.getUser(interaction.user.id) || { balance_npr: 0, loyalty_points: 0 };
             const embed = new EmbedBuilder().setTitle('💰 Your Balance').addFields({ name: '💰 Balance', value: `${user.balance_npr} NPR`, inline: true }, { name: '🏆 Loyalty Points', value: `${user.loyalty_points || 0} pts`, inline: true }).setColor(0x00FF00).setTimestamp();
-            await interaction.update({ embeds: [embed], components: [getNavRow('balance')] });
+            await interaction.update({ embeds: [embed], components: getNavRow('balance') });
         }
 
         if (interaction.isButton() && interaction.customId === 'history') {
@@ -678,7 +693,7 @@ Join our support channel or open a ticket!
                         .setTimestamp()
                 );
                 
-                await interaction.update({ embeds: [embed], components: [getNavRow('back')] });
+                await interaction.update({ embeds: [embed], components: getNavRow('back') });
             } catch (error) {
                 let msg = error.message;
                 if (msg.startsWith('Next claim time: ')) {
@@ -692,7 +707,7 @@ Join our support channel or open a ticket!
                     .setTitle('⏰ Daily Reward')
                     .setDescription(`❌ ${msg}`)
                     .setColor(0xe74c3c);
-                await interaction.update({ embeds: [errEmbed], components: [getNavRow('back')] });
+                await interaction.update({ embeds: [errEmbed], components: getNavRow('back') });
             }
         }
 
@@ -714,7 +729,7 @@ Join our support channel or open a ticket!
         if (interaction.isButton() && interaction.customId === 'nav_balance') {
             const user = db.getUser(interaction.user.id) || { balance_npr: 0, loyalty_points: 0 };
             const embed = new EmbedBuilder().setTitle('💰 Balance').addFields({ name: '💰 Balance', value: `${user.balance_npr} NPR`, inline: true }, { name: ' Loyalty Points', value: `${user.loyalty_points || 0} pts`, inline: true }).setColor(0x00FF00).setTimestamp();
-            await interaction.update({ embeds: [embed], components: [getNavRow('balance')] });
+            await interaction.update({ embeds: [embed], components: getNavRow('balance') });
         }
 
         if (interaction.isButton() && interaction.customId === 'nav_history') {
@@ -913,7 +928,7 @@ Join our support channel or open a ticket!
                             .setDescription(`Bought ${quantity}x **${pData.name}**\nCheck your Direct Messages (DMs) for details!`)
                             .setColor(0x00FF00)
                     ], 
-                    components: [getNavRow('categories')] 
+                    components: getNavRow('categories')
                 });
             } catch (error) {
                 log.error({ userId: interaction.user.id, error: error.message }, 'Purchase error');
@@ -924,7 +939,7 @@ Join our support channel or open a ticket!
                             .setDescription(error.message)
                             .setColor(0xFF0000)
                     ], 
-                    components: [getNavRow('categories')] 
+                    components: getNavRow('categories')
                 });
             }
         }
@@ -1001,7 +1016,7 @@ Join our support channel or open a ticket!
                 
                 await interaction.editReply({ embeds: [embed], components: [row] });
             } catch (error) {
-                await interaction.editReply({ content: `❌ ${error.message}`, components: [getNavRow('categories')] });
+                await interaction.editReply({ content: `❌ ${error.message}`, components: getNavRow('categories') });
             }
         }
 
@@ -1030,13 +1045,13 @@ Join our support channel or open a ticket!
                         .setTimestamp()
                 );
                 
-                await interaction.editReply({ embeds: [embed], components: [getNavRow('back')] });
+                await interaction.editReply({ embeds: [embed], components: getNavRow('back') });
             } catch (error) {
                 const errEmbed = new EmbedBuilder()
                     .setTitle('🏆 Loyalty Points')
                     .setDescription(`❌ ${error.message}`)
                     .setColor(0xe74c3c);
-                await interaction.editReply({ embeds: [errEmbed], components: [getNavRow('back')] });
+                await interaction.editReply({ embeds: [errEmbed], components: getNavRow('back') });
             }
         }
 

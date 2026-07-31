@@ -413,6 +413,8 @@ async function loadSettings() {
             }
             if (menuBannerInput) menuBannerInput.value = settings.shop_menu_banner || '';
             if (menuThumbnailInput) menuThumbnailInput.value = settings.shop_menu_thumbnail || '';
+            const autoSortInput = document.getElementById('setting-auto-sort');
+            if (autoSortInput) autoSortInput.checked = !!settings.auto_sort_by_stock;
         }
     } catch (err) {
         showToast('Failed to load settings', 'error');
@@ -432,6 +434,7 @@ async function loadSettings() {
             const themeColor = document.getElementById('setting-theme-color').value;
             const menuBanner = document.getElementById('setting-menu-banner').value;
             const menuThumbnail = document.getElementById('setting-menu-thumbnail').value;
+            const autoSort = document.getElementById('setting-auto-sort').checked;
 
             try {
                 const res = await fetch('/api/settings', {
@@ -447,7 +450,8 @@ async function loadSettings() {
                         loyalty_redeem_rate: isNaN(redeemRate) ? null : redeemRate,
                         shop_theme_color: themeColor,
                         shop_menu_banner: menuBanner,
-                        shop_menu_thumbnail: menuThumbnail
+                        shop_menu_thumbnail: menuThumbnail,
+                        auto_sort_by_stock: autoSort
                     })
                 });
                 if (!res.ok) throw new Error('Failed to save settings');

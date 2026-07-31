@@ -80,17 +80,26 @@ function extractArray(data) {
 }
 
 function sortProducts(products) {
+    const autoSortByStock = db.getConfig('auto_sort_by_stock') === true;
     const productOrder = db.getConfig('product_order') || [];
-    if (productOrder.length > 0) {
-        products.sort((a, b) => {
-            const idxA = productOrder.indexOf(String(a.id));
-            const idxB = productOrder.indexOf(String(b.id));
-            if (idxA === -1 && idxB === -1) return 0;
-            if (idxA === -1) return 1;
-            if (idxB === -1) return -1;
-            return idxA - idxB;
-        });
-    }
+    
+    products.sort((a, b) => {
+        if (autoSortByStock) {
+            const hasStockA = a.infinite_stock || Number(a.stock) > 0;
+            const hasStockB = b.infinite_stock || Number(b.stock) > 0;
+            
+            if (hasStockA && !hasStockB) return -1;
+            if (!hasStockA && hasStockB) return 1;
+        }
+        
+        const idxA = productOrder.indexOf(String(a.id));
+        const idxB = productOrder.indexOf(String(b.id));
+        if (idxA === -1 && idxB === -1) return 0;
+        if (idxA === -1) return 1;
+        if (idxB === -1) return -1;
+        return idxA - idxB;
+    });
+    
     return products;
 }
 

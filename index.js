@@ -31,23 +31,11 @@ const activeShopSessions = new Map();
 const SHOP_PAGE_SIZE = 6;
 const HISTORY_PAGE_SIZE = 5;
 
-async function getChannel(channelId) {
-    if (!channelId) return null;
-    let channel = client.channels.cache.get(channelId);
-    if (!channel) {
-        try {
-            channel = await client.channels.fetch(channelId);
-        } catch (e) {
-            log.error({ err: e.message, channelId }, 'Failed to fetch channel from API');
-        }
-    }
-    return channel;
-}
-
 async function sendStaffLog(embed) {
     try {
         const channelId = db.getConfig('staff_log_channel_id') || process.env.STAFF_LOG_CHANNEL_ID;
-        const channel = await getChannel(channelId);
+        if (!channelId) return;
+        const channel = client.channels.cache.get(channelId);
         if (channel) {
             await channel.send({ embeds: [embed] });
         }
@@ -60,7 +48,8 @@ async function runDailyBackup() {
     try {
         const fs = require('fs');
         const channelId = db.getConfig('backup_channel_id') || process.env.BACKUP_CHANNEL_ID;
-        const channel = await getChannel(channelId);
+        if (!channelId) return;
+        const channel = client.channels.cache.get(channelId);
         if (!channel) return;
         
         const files = [];
@@ -180,7 +169,8 @@ function getProductEmoji(name) {
 async function updateAvailableProductsChannel() {
     try {
         const channelId = db.getConfig('available_products_channel_id');
-        const channel = await getChannel(channelId);
+        if (!channelId) return;
+        const channel = client.channels.cache.get(channelId);
         if (!channel) return;
 
         const allProducts = await getMergedProducts();
@@ -225,7 +215,8 @@ async function trackStockChanges() {
     try {
         const products = await getMergedProducts();
         const channelId = db.getConfig('notification_channel_id');
-        const channel = await getChannel(channelId);
+        if (!channelId) return;
+        const channel = client.channels.cache.get(channelId);
         if (!channel) return;
 
         let lastKnownStock = db.getConfig('last_known_stock') || {};
@@ -284,7 +275,7 @@ async function trackStockChanges() {
                     const diff = lastStock - currentStock;
                     const liveSalesChannelId = db.getConfig('live_sales_channel_id');
                     if (liveSalesChannelId) {
-                        const liveSalesChannel = await getChannel(liveSalesChannelId);
+                        const liveSalesChannel = client.channels.cache.get(liveSalesChannelId);
                         if (liveSalesChannel) {
                             const fakePurchaseEmbed = new EmbedBuilder()
                                 .setDescription(`🛒 **New Purchase!** 👤 An anonymous customer just bought **${diff}x ${getProductEmoji(pData.name)} ${pData.name}**! ⚡ Delivery Speed: **Instant (0.1s)**`)
@@ -335,28 +326,13 @@ client.once('clientReady', async () => {
     // Daily database backup
     await runDailyBackup();
     setInterval(runDailyBackup, 24 * 60 * 60 * 1000);
-
-    // Poll for manual backup trigger
-    setInterval(async () => {
-        if (db.getConfig('trigger_backup_flag')) {
-            db.setConfig('trigger_backup_flag', false);
-            await runDailyBackup();
-        }
-    }, 5000);
 });
 
 function getShopMainMenuEmbed(interaction) {
     db.ensureUser(interaction.user.id, interaction.user.tag);
     const user = db.getUser(interaction.user.id);
     
-    const hexColor = db.getConfig('shop_theme_color') || '#8b5cf6';
-    const colorInt = parseInt(hexColor.replace('#', ''), 16);
-    
-    const bannerUrl = db.getConfig('shop_menu_banner');
-    const customThumbnail = db.getConfig('shop_menu_thumbnail');
-    const thumbnail = customThumbnail || interaction.user.displayAvatarURL({ dynamic: true });
-    
-    const embed = new EmbedBuilder()
+    return new EmbedBuilder()
         .setTitle('🏪 IdeaClick Store Menu')
         .setDescription(`━━━━━━━━━━━━━━━━━━━━━
 ✨ **Nepal's #1 Automated Digital Shop**
@@ -368,47 +344,26 @@ function getShopMainMenuEmbed(interaction) {
 
 ⚡ **Instant Delivery 24/7** — Digital products are sent directly to your DMs immediately after purchase!
 ━━━━━━━━━━━━━━━━━━━━━`)
-        .setColor(colorInt)
-        .setThumbnail(thumbnail)
+        .setColor(0x8b5cf6)
+        .setThumbnail(interaction.user.displayAvatarURL({ dynamic: true }))
         .setTimestamp();
-        
-    if (bannerUrl) {
-        embed.setImage(bannerUrl);
-    }
-    
-    return embed;
 }
 
 function getNavRow(excludeButton) {
-    const row1 = new ActionRowBuilder();
-    const row2 = new ActionRowBuilder();
-    
-    const buttons1 = [
+    const row = new ActionRowBuilder();
+    const buttons = [
         { id: 'nav_shop', label: '🛒 Shop', style: ButtonStyle.Primary },
         { id: 'nav_balance', label: '💰 Balance', style: ButtonStyle.Success },
         { id: 'nav_deposit', label: '📥 Deposit', style: ButtonStyle.Secondary },
-        { id: 'daily', label: '🎁 Daily', style: ButtonStyle.Success }
-    ];
-    
-    const buttons2 = [
         { id: 'nav_history', label: '📜 History', style: ButtonStyle.Secondary },
-        { id: 'redeem', label: '🏆 Redeem', style: ButtonStyle.Secondary },
         { id: 'nav_back', label: '🔙 Back', style: ButtonStyle.Danger }
     ];
-
-    buttons1.forEach(btn => {
-        if (btn.id !== `nav_${excludeButton}` && btn.id !== excludeButton) {
-            row1.addComponents(new ButtonBuilder().setCustomId(btn.id).setLabel(btn.label).setStyle(btn.style));
+    buttons.forEach(btn => {
+        if (btn.id !== `nav_${excludeButton}`) {
+            row.addComponents(new ButtonBuilder().setCustomId(btn.id).setLabel(btn.label).setStyle(btn.style));
         }
     });
-
-    buttons2.forEach(btn => {
-        if (btn.id !== `nav_${excludeButton}` && btn.id !== excludeButton) {
-            row2.addComponents(new ButtonBuilder().setCustomId(btn.id).setLabel(btn.label).setStyle(btn.style));
-        }
-    });
-
-    return [row1, row2];
+    return row;
 }
 
 function getMainMenuRows() {
@@ -499,8 +454,6 @@ function getShopPaginationRow(page, totalPages) {
 }
 
 function getShopEmbed() {
-    const hexColor = db.getConfig('shop_theme_color') || '#8b5cf6';
-    const colorInt = parseInt(hexColor.replace('#', ''), 16);
     return new EmbedBuilder()
         .setTitle('🛒 Available Products')
         .setDescription(` **Guide:**
@@ -508,7 +461,7 @@ function getShopEmbed() {
 ⏱️ D/M = Day/Month | 🛡️ NW = No Warranty | FW = Full Warranty
 
 👇 **Tap a product to view details:**`)
-        .setColor(colorInt);
+        .setColor(0xFFA500);
 }
 
 async function renderShopPage(interaction, products, page) {
@@ -520,7 +473,7 @@ async function renderShopPage(interaction, products, page) {
     if (totalPages > 1) {
         rows.push(getShopPaginationRow(page, totalPages));
     }
-    rows.push(...getNavRow('shop'));
+    rows.push(getNavRow('shop'));
     
     const embed = getShopEmbed();
     if (totalPages > 1) {
@@ -571,7 +524,7 @@ async function renderHistoryPage(interaction, page) {
                 .setDisabled(page >= totalPages - 1)
         ));
     }
-    components.push(...getNavRow('history'));
+    components.push(getNavRow('history'));
     
     await interaction.update({ embeds: [embed], components });
 }
@@ -630,7 +583,7 @@ client.on('interactionCreate', async (interaction) => {
         if (interaction.isModalSubmit() && interaction.customId.startsWith('announce_modal_')) {
             if (!interaction.member.permissions.has('Administrator')) return await interaction.reply({ content: '❌ Admins only.', ...ephemeral });
             const channelId = interaction.customId.replace('announce_modal_', '');
-            const channel = await getChannel(channelId);
+            const channel = client.channels.cache.get(channelId);
             const title = interaction.fields.getTextInputValue('ann_title');
             const desc = interaction.fields.getTextInputValue('ann_desc');
             const embed = new EmbedBuilder().setTitle(`📢 ${title}`).setDescription(desc).setColor(0x0099FF).setFooter({ text: `Announcement by ${interaction.user.tag}` }).setTimestamp();
@@ -691,7 +644,7 @@ Join our support channel or open a ticket!
         if (interaction.isButton() && interaction.customId === 'balance') {
             const user = db.getUser(interaction.user.id) || { balance_npr: 0, loyalty_points: 0 };
             const embed = new EmbedBuilder().setTitle('💰 Your Balance').addFields({ name: '💰 Balance', value: `${user.balance_npr} NPR`, inline: true }, { name: '🏆 Loyalty Points', value: `${user.loyalty_points || 0} pts`, inline: true }).setColor(0x00FF00).setTimestamp();
-            await interaction.update({ embeds: [embed], components: getNavRow('balance') });
+            await interaction.update({ embeds: [embed], components: [getNavRow('balance')] });
         }
 
         if (interaction.isButton() && interaction.customId === 'history') {
@@ -725,7 +678,7 @@ Join our support channel or open a ticket!
                         .setTimestamp()
                 );
                 
-                await interaction.update({ embeds: [embed], components: getNavRow('back') });
+                await interaction.update({ embeds: [embed], components: [getNavRow('back')] });
             } catch (error) {
                 let msg = error.message;
                 if (msg.startsWith('Next claim time: ')) {
@@ -739,7 +692,7 @@ Join our support channel or open a ticket!
                     .setTitle('⏰ Daily Reward')
                     .setDescription(`❌ ${msg}`)
                     .setColor(0xe74c3c);
-                await interaction.update({ embeds: [errEmbed], components: getNavRow('back') });
+                await interaction.update({ embeds: [errEmbed], components: [getNavRow('back')] });
             }
         }
 
@@ -761,7 +714,7 @@ Join our support channel or open a ticket!
         if (interaction.isButton() && interaction.customId === 'nav_balance') {
             const user = db.getUser(interaction.user.id) || { balance_npr: 0, loyalty_points: 0 };
             const embed = new EmbedBuilder().setTitle('💰 Balance').addFields({ name: '💰 Balance', value: `${user.balance_npr} NPR`, inline: true }, { name: ' Loyalty Points', value: `${user.loyalty_points || 0} pts`, inline: true }).setColor(0x00FF00).setTimestamp();
-            await interaction.update({ embeds: [embed], components: getNavRow('balance') });
+            await interaction.update({ embeds: [embed], components: [getNavRow('balance')] });
         }
 
         if (interaction.isButton() && interaction.customId === 'nav_history') {
@@ -960,7 +913,7 @@ Join our support channel or open a ticket!
                             .setDescription(`Bought ${quantity}x **${pData.name}**\nCheck your Direct Messages (DMs) for details!`)
                             .setColor(0x00FF00)
                     ], 
-                    components: getNavRow('categories')
+                    components: [getNavRow('categories')] 
                 });
             } catch (error) {
                 log.error({ userId: interaction.user.id, error: error.message }, 'Purchase error');
@@ -971,7 +924,7 @@ Join our support channel or open a ticket!
                             .setDescription(error.message)
                             .setColor(0xFF0000)
                     ], 
-                    components: getNavRow('categories')
+                    components: [getNavRow('categories')] 
                 });
             }
         }
@@ -1048,7 +1001,7 @@ Join our support channel or open a ticket!
                 
                 await interaction.editReply({ embeds: [embed], components: [row] });
             } catch (error) {
-                await interaction.editReply({ content: `❌ ${error.message}`, components: getNavRow('categories') });
+                await interaction.editReply({ content: `❌ ${error.message}`, components: [getNavRow('categories')] });
             }
         }
 
@@ -1077,13 +1030,13 @@ Join our support channel or open a ticket!
                         .setTimestamp()
                 );
                 
-                await interaction.editReply({ embeds: [embed], components: getNavRow('back') });
+                await interaction.editReply({ embeds: [embed], components: [getNavRow('back')] });
             } catch (error) {
                 const errEmbed = new EmbedBuilder()
                     .setTitle('🏆 Loyalty Points')
                     .setDescription(`❌ ${error.message}`)
                     .setColor(0xe74c3c);
-                await interaction.editReply({ embeds: [errEmbed], components: getNavRow('back') });
+                await interaction.editReply({ embeds: [errEmbed], components: [getNavRow('back')] });
             }
         }
 

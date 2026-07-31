@@ -197,17 +197,29 @@ async function updateAvailableProductsChannel() {
             .setColor(0x8b5cf6)
             .setTimestamp();
 
-        const messages = await channel.messages.fetch({ limit: 50 });
-        const botMessage = messages.find(m => m.author.id === client.user.id);
-
-        if (botMessage) {
-            await botMessage.edit({ embeds: [embed], components: [] });
-        } else {
-            await channel.send({ embeds: [embed] });
+        let botMessage = null;
+        try {
+            const messages = await channel.messages.fetch({ limit: 50 });
+            botMessage = messages.find(m => m.author.id === client.user.id);
+        } catch (fetchErr) {
+            log.warn({ err: fetchErr.message }, 'Failed to fetch messages in live catalog channel (Read Message History permission may be missing).');
         }
-        log.info('Live catalog channel updated successfully.');
+
+        try {
+            if (botMessage) {
+                await botMessage.edit({ embeds: [embed], components: [] }).catch(async (editErr) => {
+                    log.warn({ err: editErr.message }, 'Failed to edit bot message in live catalog channel, attempting to send a new one.');
+                    await channel.send({ embeds: [embed] });
+                });
+            } else {
+                await channel.send({ embeds: [embed] });
+            }
+            log.info('Live catalog channel updated successfully.');
+        } catch (sendErr) {
+            log.error({ err: sendErr.message }, 'Failed to send or edit message in live catalog channel. Please ensure the bot has Send Messages and View Channel permissions.');
+        }
     } catch (e) {
-        log.error({ err: e.message }, 'Failed to update live catalog channel');
+        log.error({ err: e.message }, 'Global catalog update error');
     }
 }
 

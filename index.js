@@ -31,11 +31,23 @@ const activeShopSessions = new Map();
 const SHOP_PAGE_SIZE = 6;
 const HISTORY_PAGE_SIZE = 5;
 
+async function getChannel(channelId) {
+    if (!channelId) return null;
+    let channel = client.channels.cache.get(channelId);
+    if (!channel) {
+        try {
+            channel = await client.channels.fetch(channelId);
+        } catch (e) {
+            log.error({ err: e.message, channelId }, 'Failed to fetch channel from API');
+        }
+    }
+    return channel;
+}
+
 async function sendStaffLog(embed) {
     try {
         const channelId = db.getConfig('staff_log_channel_id') || process.env.STAFF_LOG_CHANNEL_ID;
-        if (!channelId) return;
-        const channel = client.channels.cache.get(channelId);
+        const channel = await getChannel(channelId);
         if (channel) {
             await channel.send({ embeds: [embed] });
         }
@@ -48,8 +60,7 @@ async function runDailyBackup() {
     try {
         const fs = require('fs');
         const channelId = db.getConfig('backup_channel_id') || process.env.BACKUP_CHANNEL_ID;
-        if (!channelId) return;
-        const channel = client.channels.cache.get(channelId);
+        const channel = await getChannel(channelId);
         if (!channel) return;
         
         const files = [];
@@ -169,8 +180,7 @@ function getProductEmoji(name) {
 async function updateAvailableProductsChannel() {
     try {
         const channelId = db.getConfig('available_products_channel_id');
-        if (!channelId) return;
-        const channel = client.channels.cache.get(channelId);
+        const channel = await getChannel(channelId);
         if (!channel) return;
 
         const allProducts = await getMergedProducts();
@@ -215,8 +225,7 @@ async function trackStockChanges() {
     try {
         const products = await getMergedProducts();
         const channelId = db.getConfig('notification_channel_id');
-        if (!channelId) return;
-        const channel = client.channels.cache.get(channelId);
+        const channel = await getChannel(channelId);
         if (!channel) return;
 
         let lastKnownStock = db.getConfig('last_known_stock') || {};
@@ -275,7 +284,7 @@ async function trackStockChanges() {
                     const diff = lastStock - currentStock;
                     const liveSalesChannelId = db.getConfig('live_sales_channel_id');
                     if (liveSalesChannelId) {
-                        const liveSalesChannel = client.channels.cache.get(liveSalesChannelId);
+                        const liveSalesChannel = await getChannel(liveSalesChannelId);
                         if (liveSalesChannel) {
                             const fakePurchaseEmbed = new EmbedBuilder()
                                 .setDescription(`🛒 **New Purchase!** 👤 An anonymous customer just bought **${diff}x ${getProductEmoji(pData.name)} ${pData.name}**! ⚡ Delivery Speed: **Instant (0.1s)**`)
@@ -621,7 +630,7 @@ client.on('interactionCreate', async (interaction) => {
         if (interaction.isModalSubmit() && interaction.customId.startsWith('announce_modal_')) {
             if (!interaction.member.permissions.has('Administrator')) return await interaction.reply({ content: '❌ Admins only.', ...ephemeral });
             const channelId = interaction.customId.replace('announce_modal_', '');
-            const channel = client.channels.cache.get(channelId);
+            const channel = await getChannel(channelId);
             const title = interaction.fields.getTextInputValue('ann_title');
             const desc = interaction.fields.getTextInputValue('ann_desc');
             const embed = new EmbedBuilder().setTitle(`📢 ${title}`).setDescription(desc).setColor(0x0099FF).setFooter({ text: `Announcement by ${interaction.user.tag}` }).setTimestamp();

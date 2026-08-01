@@ -636,8 +636,13 @@ client.on('interactionCreate', async (interaction) => {
             const desc = interaction.fields.getTextInputValue('ann_desc');
             const embed = new EmbedBuilder().setTitle(`📢 ${title}`).setDescription(desc).setColor(0x0099FF).setFooter({ text: `Announcement by ${interaction.user.tag}` }).setTimestamp();
             if (channel) {
-                await channel.send({ embeds: [embed] });
-                await interaction.reply({ content: `✅ Announcement successfully sent to ${channel}!`, ...ephemeral });
+                try {
+                    await channel.send({ embeds: [embed] });
+                    await interaction.reply({ content: `✅ Announcement successfully sent to ${channel}!`, ...ephemeral });
+                } catch (sendErr) {
+                    log.error({ err: sendErr.message }, 'Failed to send announcement');
+                    await interaction.reply({ content: `❌ Failed to send announcement: ${sendErr.message}. Please ensure the bot has permission to View Channel, Send Messages, and Embed Links in ${channel}.`, ...ephemeral });
+                }
             } else {
                 await interaction.reply({ content: '❌ Could not find the selected channel.', ...ephemeral });
             }

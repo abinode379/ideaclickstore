@@ -33,7 +33,8 @@ function getUser(discordId) {
         username: user.username || '',
         balance_npr: user.balance_npr || 0,
         loyalty_points: user.loyalty_points || 0,
-        last_daily_claim: user.last_daily_claim || 0
+        last_daily_claim: user.last_daily_claim || 0,
+        purchase_history: user.purchase_history || []
     };
 }
 

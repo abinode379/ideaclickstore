@@ -1147,7 +1147,12 @@ Join our support channel or open a ticket!
             try {
                 const session = await paybridgeAPI.post('/checkout', { amount: amount * 100, returnUrl: `${tunnelUrl}/success`, cancelUrl: `${tunnelUrl}/cancel`, metadata: { discordUserId: interaction.user.id, discordUsername: interaction.user.tag, amount } });
                 const embed = new EmbedBuilder().setTitle('📥 Deposit').setDescription(`${amount} NPR\nClick to pay:`).setColor(0x0099FF);
-                const payRow = new ActionRowBuilder().addComponents(new ButtonBuilder().setLabel('💳 Pay').setURL(session.data.checkout_url).setStyle(ButtonStyle.Link));
+                db.ensureUser(interaction.user.id, interaction.user.tag);
+                const user = db.getUser(interaction.user.id);
+                const payRow = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder().setLabel('💳 Pay').setURL(session.data.checkout_url).setStyle(ButtonStyle.Link),
+                    new ButtonBuilder().setCustomId(`check_dep_${amount}_${user.balance_npr}`).setLabel('🔄 Check Status').setStyle(ButtonStyle.Primary)
+                );
                 const backRow = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('nav_back').setLabel('🔙 Back to Main Menu').setStyle(ButtonStyle.Danger));
                 await interaction.editReply({ embeds: [embed], components: [payRow, backRow] });
             } catch (error) { await interaction.editReply({ content: '❌ Deposit failed' }); }

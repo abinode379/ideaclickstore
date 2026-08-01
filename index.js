@@ -907,7 +907,8 @@ Join our support channel or open a ticket!
                 }
                 
                 log.info({ userId: interaction.user.id, product: pData.name, quantity, totalCost, pointsEarned: txResult.pointsEarned }, 'Purchase completed successfully');
-                const formattedDetails = `\`\`\`text\n${details}\n\`\`\``;
+                               const safeDetails = details.length > 1000 ? (details.substring(0, 1000) + '\n... (truncated, see full message below)') : details;
+                const formattedDetails = `\`\`\`text\n${safeDetails}\n\`\`\``;
                 
                 const embed = new EmbedBuilder()
                     .setTitle('✅ Success!')
@@ -931,9 +932,18 @@ Join our support channel or open a ticket!
                 
                 try { 
                     await interaction.user.send({ embeds: [embed] }); 
-                    await interaction.user.send({ content: `📋 **Copy Code / Account Details below:**\n\`\`\`text\n${details}\n\`\`\`` });
+                    const limit = 1900;
+                    if (details.length <= limit) {
+                        await interaction.user.send({ content: `📋 **Copy Code / Account Details below:**\n\`\`\`text\n${details}\n\`\`\`` });
+                    } else {
+                        await interaction.user.send({ content: `📋 **Copy Code / Account Details:**` });
+                        for (let i = 0; i < details.length; i += limit) {
+                            const chunk = details.substring(i, i + limit);
+                            await interaction.user.send({ content: `\`\`\`text\n${chunk}\n\`\`\`` });
+                        }
+                    }
                 } catch(e) {
-                    log.warn({ userId: interaction.user.id }, 'Could not send DM');
+                    log.warn({ userId: interaction.user.id, error: e.message }, 'Could not send DM');
                 }
                 await interaction.editReply({ 
                     embeds: [

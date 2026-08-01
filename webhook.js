@@ -184,17 +184,28 @@ async function autoPurchaseProduct(discordUserId, username, productId, quantity)
         }
 
         // Send Success DM
+        const safeDetails = details.length > 1000 ? (details.substring(0, 1000) + '\n... (truncated, see full message below)') : details;
         const embed = {
             title: '✅ Auto-Purchase Successful!',
             description: `Thank you for your payment! Bought ${quantity}x **${product.name}**\nTotal Cost: **${totalCost} NPR**\nRemaining Balance: **${txResult.balance_npr} NPR**\n**+${txResult.pointsEarned} Loyalty Points earned!**`,
             color: 0x2ecc71,
             fields: [
-                { name: '🔑 Delivery Details', value: `\`\`\`text\n${details}\n\`\`\`` }
+                { name: '🔑 Delivery Details', value: `\`\`\`text\n${safeDetails}\n\`\`\`` }
             ],
             timestamp: new Date().toISOString()
         };
         await sendDMWithRetry(discordUserId, embed);
-        await sendDMWithRetry(discordUserId, { content: `📋 **Copy Code / Account Details below:**\n\`\`\`text\n${details}\n\`\`\`` });
+
+        const limit = 1900;
+        if (details.length <= limit) {
+            await sendDMWithRetry(discordUserId, { content: `📋 **Copy Code / Account Details below:**\n\`\`\`text\n${details}\n\`\`\`` });
+        } else {
+            await sendDMWithRetry(discordUserId, { content: `📋 **Copy Code / Account Details:**` });
+            for (let i = 0; i < details.length; i += limit) {
+                const chunk = details.substring(i, i + limit);
+                await sendDMWithRetry(discordUserId, { content: `\`\`\`text\n${chunk}\n\`\`\`` });
+            }
+        }
 
         // Send Staff Log
         try {

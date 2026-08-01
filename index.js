@@ -929,7 +929,10 @@ Join our support channel or open a ticket!
                         .setTimestamp()
                 );
                 
-                try { await interaction.user.send({ embeds: [embed] }); } catch(e) {
+                try { 
+                    await interaction.user.send({ embeds: [embed] }); 
+                    await interaction.user.send({ content: `📋 **Copy Code / Account Details below:**\n\`\`\`text\n${details}\n\`\`\`` });
+                } catch(e) {
                     log.warn({ userId: interaction.user.id }, 'Could not send DM');
                 }
                 await interaction.editReply({ 

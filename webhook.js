@@ -14,7 +14,7 @@ const PORT = process.env.PORT || 3000;
 
 function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 
-async function sendDMWithRetry(discordUserId, embed, retries = 3) {
+async function sendDMWithRetry(discordUserId, payload, retries = 3) {
     for (let attempt = 1; attempt <= retries; attempt++) {
         try {
             const dmChannel = await axios.post(
@@ -22,9 +22,10 @@ async function sendDMWithRetry(discordUserId, embed, retries = 3) {
                 { recipient_id: discordUserId },
                 { headers: { Authorization: `Bot ${DISCORD_TOKEN}` } }
             );
+            const data = (payload.embeds || payload.content) ? payload : { embeds: [payload] };
             await axios.post(
                 `https://discord.com/api/v10/channels/${dmChannel.data.id}/messages`,
-                { embeds: [embed] },
+                data,
                 { headers: { Authorization: `Bot ${DISCORD_TOKEN}` } }
             );
             log.info({ userId: discordUserId, attempt }, 'DM sent successfully');
@@ -193,6 +194,7 @@ async function autoPurchaseProduct(discordUserId, username, productId, quantity)
             timestamp: new Date().toISOString()
         };
         await sendDMWithRetry(discordUserId, embed);
+        await sendDMWithRetry(discordUserId, { content: `📋 **Copy Code / Account Details below:**\n\`\`\`text\n${details}\n\`\`\`` });
 
         // Send Staff Log
         try {

@@ -567,7 +567,9 @@ client.on('interactionCreate', async (interaction) => {
         interaction.customId.startsWith('view_') ||
         interaction.customId.startsWith('buy1_') ||
         interaction.customId.startsWith('buy_') ||
-        interaction.customId.startsWith('confirmbuy_')
+        interaction.customId.startsWith('confirmbuy_') ||
+        interaction.customId.startsWith('check_dep_') ||
+        interaction.customId.startsWith('check_buy_')
     )) || (interaction.isModalSubmit() && (
         interaction.customId === 'redeem_modal' ||
         interaction.customId.startsWith('purchase_')
@@ -823,6 +825,7 @@ Join our support channel or open a ticket!
                         
                     const row = new ActionRowBuilder().addComponents(
                         new ButtonBuilder().setLabel(`Pay ${missingAmount} NPR`).setURL(session.data.checkout_url).setStyle(ButtonStyle.Link),
+                        new ButtonBuilder().setCustomId(`check_buy_${product.id}_1_${user.balance_npr}`).setLabel('🔄 Check Status').setStyle(ButtonStyle.Primary),
                         new ButtonBuilder().setCustomId('nav_shop').setLabel('🔙 Back').setStyle(ButtonStyle.Secondary)
                     );
                     
@@ -853,6 +856,62 @@ Join our support channel or open a ticket!
                 await interaction.editReply({ embeds: [embed], components: [row] });
             } catch (err) {
                 await interaction.editReply({ content: `❌ ${err.message}` });
+            }
+            return;
+        }
+
+        if (interaction.isButton() && interaction.customId.startsWith('check_dep_')) {
+            const parts = interaction.customId.split('_');
+            const amount = parseFloat(parts[2]);
+            const initialBalance = parseFloat(parts[3]);
+            
+            db.ensureUser(interaction.user.id, interaction.user.tag);
+            const user = db.getUser(interaction.user.id);
+            
+            if (user.balance_npr > initialBalance) {
+                const embed = new EmbedBuilder()
+                    .setTitle('✅ PAYMENT COMPLETED')
+                    .setDescription(`Your deposit of **${amount} NPR** has been successfully verified!\n\n💰 New Balance: **${user.balance_npr} NPR**`)
+                    .setColor(0x2ecc71)
+                    .setTimestamp();
+                
+                const row = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder().setCustomId('nav_back').setLabel('🔙 Back to Main Menu').setStyle(ButtonStyle.Success)
+                );
+                await interaction.update({ embeds: [embed], components: [row] });
+            } else {
+                await interaction.reply({ content: '⏳ Payment not detected yet. Please complete the payment or wait a few seconds and try again.', flags: [MessageFlags.Ephemeral] });
+            }
+            return;
+        }
+
+        if (interaction.isButton() && interaction.customId.startsWith('check_buy_')) {
+            const parts = interaction.customId.split('_');
+            const productId = parts[2];
+            const quantity = parseInt(parts[3]);
+            const initialBalance = parseFloat(parts[4]);
+            
+            db.ensureUser(interaction.user.id, interaction.user.tag);
+            const user = db.getUser(interaction.user.id);
+            
+            const history = user.purchase_history || [];
+            const lastPurchase = history[history.length - 1];
+            
+            const hasPurchased = lastPurchase && (Date.now() - new Date(lastPurchase.date).getTime() < 5 * 60 * 1000);
+            
+            if (hasPurchased || user.balance_npr !== initialBalance) {
+                const embed = new EmbedBuilder()
+                    .setTitle('✅ ORDER COMPLETED')
+                    .setDescription(`Your purchase was successfully processed!\n\n🔑 The account credentials / links have been delivered to your **Direct Messages (DMs)**.\n\n💰 Current Balance: **${user.balance_npr} NPR**`)
+                    .setColor(0x2ecc71)
+                    .setTimestamp();
+                
+                const row = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder().setCustomId('nav_shop').setLabel('🔙 Back to Shop').setStyle(ButtonStyle.Success)
+                );
+                await interaction.update({ embeds: [embed], components: [row] });
+            } else {
+                await interaction.reply({ content: '⏳ Payment / Order completion not detected yet. Please complete the payment or wait a few seconds and try again.', flags: [MessageFlags.Ephemeral] });
             }
             return;
         }
@@ -1005,6 +1064,7 @@ Join our support channel or open a ticket!
                         
                     const row = new ActionRowBuilder().addComponents(
                         new ButtonBuilder().setLabel(`Pay ${missingAmount} NPR`).setURL(session.data.checkout_url).setStyle(ButtonStyle.Link),
+                        new ButtonBuilder().setCustomId(`check_buy_${product.id}_${quantity}_${user.balance_npr}`).setLabel('🔄 Check Status').setStyle(ButtonStyle.Primary),
                         new ButtonBuilder().setCustomId('nav_shop').setLabel('🔙 Back').setStyle(ButtonStyle.Secondary)
                     );
                     

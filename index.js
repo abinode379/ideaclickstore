@@ -882,8 +882,8 @@ Join our support channel or open a ticket!
 
         if (interaction.isButton() && interaction.customId.startsWith('check_dep_')) {
             const parts = interaction.customId.split('_');
-            const amount = parseFloat(parts[2]);
-            const initialBalance = parseFloat(parts[3]);
+            const initialBalance = parseFloat(parts[parts.length - 1]);
+            const amount = parseFloat(parts[parts.length - 2]);
             
             db.ensureUser(interaction.user.id, interaction.user.tag);
             const user = db.getUser(interaction.user.id);
@@ -907,9 +907,9 @@ Join our support channel or open a ticket!
 
         if (interaction.isButton() && interaction.customId.startsWith('check_buy_')) {
             const parts = interaction.customId.split('_');
-            const productId = parts[2];
-            const quantity = parseInt(parts[3]);
-            const initialBalance = parseFloat(parts[4]);
+            const initialBalance = parseFloat(parts[parts.length - 1]);
+            const quantity = parseInt(parts[parts.length - 2]);
+            const productId = parts.slice(2, parts.length - 2).join('_');
             
             db.ensureUser(interaction.user.id, interaction.user.tag);
             const user = db.getUser(interaction.user.id);

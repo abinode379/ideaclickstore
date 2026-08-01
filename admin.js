@@ -356,12 +356,14 @@ app.post('/api/product', ensureAuthAPI, (req, res) => {
         delete customProducts[String(product_id)];
     }
     
-    if (hidden) {
-        if (!hiddenProducts.includes(String(product_id))) {
-            hiddenProducts.push(String(product_id));
+    if (hidden !== undefined) {
+        if (hidden) {
+            if (!hiddenProducts.includes(String(product_id))) {
+                hiddenProducts.push(String(product_id));
+            }
+        } else {
+            hiddenProducts = hiddenProducts.filter(id => id !== String(product_id));
         }
-    } else {
-        hiddenProducts = hiddenProducts.filter(id => id !== String(product_id));
     }
     
     db.setConfig('custom_products', customProducts);

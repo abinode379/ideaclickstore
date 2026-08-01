@@ -133,6 +133,7 @@ async function getMergedProducts() {
             price_usdt: Number(p.price) / (db.getConfig('usdt_to_npr_rate') || 250),
             stock: p.infinite_stock ? 9999 : (p.stock ? p.stock.length : 0),
             infinite_stock: !!p.infinite_stock,
+            hidden: !!p.hidden,
             is_local: true
         }));
         
@@ -148,6 +149,7 @@ async function getMergedProducts() {
                 price_usdt: Number(p.price) / (db.getConfig('usdt_to_npr_rate') || 250),
                 stock: p.infinite_stock ? 9999 : (p.stock ? p.stock.length : 0),
                 infinite_stock: !!p.infinite_stock,
+                hidden: !!p.hidden,
                 is_local: true
             }));
         } catch (localErr) {
@@ -185,7 +187,7 @@ async function updateAvailableProductsChannel() {
         const allProducts = await getMergedProducts();
         const hiddenProducts = db.getConfig('hidden_products') || [];
         
-        let products = allProducts.filter(p => !hiddenProducts.includes(String(p.id)));
+        let products = allProducts.filter(p => !p.hidden && !hiddenProducts.includes(String(p.id)));
         products = sortProducts(products);
 
         let descriptionText = `🇳🇵 **IdeaClick Live Product Catalog**\n\n`;
@@ -236,7 +238,7 @@ async function trackStockChanges() {
     try {
         const allProducts = await getMergedProducts();
         const hiddenProducts = db.getConfig('hidden_products') || [];
-        const products = allProducts.filter(p => !hiddenProducts.includes(String(p.id)));
+        const products = allProducts.filter(p => !p.hidden && !hiddenProducts.includes(String(p.id)));
 
         const channelId = db.getConfig('notification_channel_id');
         if (!channelId) return;
@@ -347,6 +349,21 @@ client.once('clientReady', async () => {
     await updateAvailableProductsChannel();
     setInterval(trackStockChanges, 1 * 60 * 1000); 
     
+    // Watch config.json for settings/hidden changes to live update Discord channel
+    const fs = require('fs');
+    const path = require('path');
+    const configFilePath = path.join(__dirname, 'config.json');
+    let watchTimeout = null;
+    fs.watch(configFilePath, (eventType) => {
+        if (eventType === 'change') {
+            if (watchTimeout) clearTimeout(watchTimeout);
+            watchTimeout = setTimeout(async () => {
+                log.info('Detected configuration change on disk, syncing live catalog channel...');
+                await updateAvailableProductsChannel().catch(() => null);
+            }, 1500);
+        }
+    });
+
     // Daily database backup
     await runDailyBackup();
     setInterval(runDailyBackup, 24 * 60 * 60 * 1000);
@@ -667,7 +684,7 @@ Join our support channel or open a ticket!
         if (interaction.isButton() && interaction.customId === 'shop') {
             const allProducts = await getMergedProducts();
             const hiddenProducts = db.getConfig('hidden_products') || [];
-            const products = sortProducts(allProducts.filter(p => !hiddenProducts.includes(String(p.id))));
+            const products = sortProducts(allProducts.filter(p => !p.hidden && !hiddenProducts.includes(String(p.id))));
             if (products.length === 0) return await interaction.update({ content: '📭 No products available.', components: [], ...ephemeral });
             await renderShopPage(interaction, products, 0);
         }
@@ -737,7 +754,7 @@ Join our support channel or open a ticket!
         if (interaction.isButton() && interaction.customId === 'nav_shop') {
             const allProducts = await getMergedProducts();
             const hiddenProducts = db.getConfig('hidden_products') || [];
-            const products = sortProducts(allProducts.filter(p => !hiddenProducts.includes(String(p.id))));
+            const products = sortProducts(allProducts.filter(p => !p.hidden && !hiddenProducts.includes(String(p.id))));
             if (products.length === 0) return await interaction.update({ content: '📭 No products available.', components: [], ...ephemeral });
             await renderShopPage(interaction, products, 0);
         }
@@ -767,7 +784,7 @@ Join our support channel or open a ticket!
             if (isNaN(page)) return;
             const allProducts = await getMergedProducts();
             const hiddenProducts = db.getConfig('hidden_products') || [];
-            const products = sortProducts(allProducts.filter(p => !hiddenProducts.includes(String(p.id))));
+            const products = sortProducts(allProducts.filter(p => !p.hidden && !hiddenProducts.includes(String(p.id))));
             await renderShopPage(interaction, products, page);
         }
 

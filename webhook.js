@@ -247,7 +247,7 @@ async function autoPurchaseProduct(discordUserId, username, productId, quantity)
 
 // Success & Cancel Pages
 app.get('/success', (req, res) => {
-    res.send(`<!DOCTYPE html><html><head><title>Payment Successful</title><style>body{font-family:Arial;text-align:center;padding:50px;background:#2c2f33;color:white}.btn{background:#5865F2;color:white;padding:15px 30px;text-decoration:none;border-radius:5px;font-size:18px;display:inline-block;margin-top:20px}</style></head><body><h1>✅ Payment Successful!</h1><p>Check your Discord DMs for confirmation.</p><a href="https://discord.com/app" class="btn">Return to Discord</a></body></html>`);
+    res.send(`<!DOCTYPE html><html><head><title>Payment Successful</title><style>body{font-family:Arial;text-align:center;padding:50px;background:#2c2f33;color:white}.btn{background:#5865F2;color:white;padding:15px 30px;text-decoration:none;border-radius:5px;font-size:18px;display:inline-block;margin-top:20px}</style></head><body><h1>✅ Payment Successful!</h1><p>Check your Discord DMs for confirmation, or return to Discord and click the <b>Check Status</b> button inside the chat.</p><a href="https://discord.com/app" class="btn">Return to Discord</a></body></html>`);
 });
 
 app.get('/cancel', (req, res) => {

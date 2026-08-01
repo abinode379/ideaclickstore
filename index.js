@@ -885,6 +885,8 @@ Join our support channel or open a ticket!
             const initialBalance = parseFloat(parts[parts.length - 1]);
             const amount = parseFloat(parts[parts.length - 2]);
             
+            await interaction.deferUpdate();
+            
             db.ensureUser(interaction.user.id, interaction.user.tag);
             const user = db.getUser(interaction.user.id);
             
@@ -898,9 +900,9 @@ Join our support channel or open a ticket!
                 const row = new ActionRowBuilder().addComponents(
                     new ButtonBuilder().setCustomId('nav_back').setLabel('🔙 Back to Main Menu').setStyle(ButtonStyle.Success)
                 );
-                await interaction.update({ embeds: [embed], components: [row] });
+                await interaction.editReply({ embeds: [embed], components: [row] });
             } else {
-                await interaction.reply({ content: '⏳ Payment not detected yet. Please complete the payment or wait a few seconds and try again.', flags: [MessageFlags.Ephemeral] });
+                await interaction.followUp({ content: '⏳ Payment not detected yet. Please complete the payment or wait a few seconds and try again.', flags: [MessageFlags.Ephemeral] });
             }
             return;
         }
@@ -911,15 +913,21 @@ Join our support channel or open a ticket!
             const quantity = parseInt(parts[parts.length - 2]);
             const productId = parts.slice(2, parts.length - 2).join('_');
             
+            await interaction.deferUpdate();
+            
             db.ensureUser(interaction.user.id, interaction.user.tag);
             const user = db.getUser(interaction.user.id);
+            
+            const allProducts = await getMergedProducts();
+            const product = allProducts.find(p => String(p.id) === String(productId));
+            const pData = product ? getProductData(product) : null;
             
             const history = user.purchase_history || [];
             const lastPurchase = history[history.length - 1];
             
-            const hasPurchased = lastPurchase && (Date.now() - new Date(lastPurchase.date).getTime() < 5 * 60 * 1000);
+            const hasPurchased = lastPurchase && pData && lastPurchase.product === pData.name;
             
-            if (hasPurchased || user.balance_npr !== initialBalance) {
+            if (hasPurchased) {
                 const embed = new EmbedBuilder()
                     .setTitle('✅ ORDER COMPLETED')
                     .setDescription(`Your purchase was successfully processed!\n\n🔑 The account credentials / links have been delivered to your **Direct Messages (DMs)**.\n\n💰 Current Balance: **${user.balance_npr} NPR**`)
@@ -929,9 +937,20 @@ Join our support channel or open a ticket!
                 const row = new ActionRowBuilder().addComponents(
                     new ButtonBuilder().setCustomId('nav_shop').setLabel('🔙 Back to Shop').setStyle(ButtonStyle.Success)
                 );
-                await interaction.update({ embeds: [embed], components: [row] });
+                await interaction.editReply({ embeds: [embed], components: [row] });
+            } else if (user.balance_npr !== initialBalance) {
+                const embed = new EmbedBuilder()
+                    .setTitle('✅ PAYMENT COMPLETED')
+                    .setDescription(`Your deposit was successfully verified!\n\n💰 Current Balance: **${user.balance_npr} NPR**\n\n*(If your order didn't auto-deliver, you can purchase it manually from the shop using your balance)*`)
+                    .setColor(0x2ecc71)
+                    .setTimestamp();
+                
+                const row = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder().setCustomId('nav_shop').setLabel('🔙 Go to Shop').setStyle(ButtonStyle.Success)
+                );
+                await interaction.editReply({ embeds: [embed], components: [row] });
             } else {
-                await interaction.reply({ content: '⏳ Payment / Order completion not detected yet. Please complete the payment or wait a few seconds and try again.', flags: [MessageFlags.Ephemeral] });
+                await interaction.followUp({ content: '⏳ Payment / Order completion not detected yet. Please complete the payment or wait a few seconds and try again.', flags: [MessageFlags.Ephemeral] });
             }
             return;
         }

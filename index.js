@@ -234,7 +234,10 @@ async function updateAvailableProductsChannel() {
 
 async function trackStockChanges() {
     try {
-        const products = await getMergedProducts();
+        const allProducts = await getMergedProducts();
+        const hiddenProducts = db.getConfig('hidden_products') || [];
+        const products = allProducts.filter(p => !hiddenProducts.includes(String(p.id)));
+
         const channelId = db.getConfig('notification_channel_id');
         if (!channelId) return;
         const channel = await client.channels.fetch(channelId).catch(() => null);

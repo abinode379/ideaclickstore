@@ -167,6 +167,7 @@ function getProductEmoji(name) {
     else if (lower.includes('gemini')) emojiName = 'gemini~1';
     else if (lower.includes('grok')) emojiName = 'Grok';
     else if (lower.includes('canva')) emojiName = 'Canva';
+    else if (lower.includes('netflix')) emojiName = 'Netflix';
     else if (lower.includes('api')) emojiName = 'ActiveDeveloper';
     else return '🔹';
 

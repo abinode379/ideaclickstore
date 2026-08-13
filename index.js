@@ -636,7 +636,7 @@ async function renderHistoryPage(interaction, page) {
 
 
 client.on('interactionCreate', async (interaction) => {
-    if (!interaction.isChatInputCommand() && !interaction.isButton() && !interaction.isModalSubmit()) return;
+    if (!interaction.isChatInputCommand() && !interaction.isButton() && !interaction.isModalSubmit() && !interaction.isStringSelectMenu()) return;
 
     // Ephemeral shop menu session cleaner
     const isShopInteraction = (interaction.isButton() && (
@@ -993,6 +993,237 @@ Buttons below allow you to:
                 .setTimestamp();
 
             await interaction.reply({ embeds: [embed], ...ephemeral });
+        }
+
+        if (interaction.isChatInputCommand() && interaction.commandName === 'pin-mod-panel') {
+            if (!interaction.member.permissions.has('Administrator')) {
+                return await interaction.reply({ content: '❌ Admins only.', ...ephemeral });
+            }
+
+            const embed = new EmbedBuilder()
+                .setTitle('🛠️ IdeaClick Moderator Operations Center')
+                .setDescription(`━━━━━━━━━━━━━━━━━━━━━
+Welcome to the **Moderator & Admin Operations Panel**!
+
+Use the interactive buttons below to manage shop inventory, user accounts, and announcements directly inside Discord:
+
+🟢 **➕ Add Product**: Create a new local product with custom price & stock keys
+📦 **📥 Restock Product**: Add new stock keys/licenses to an existing product
+💰 **💳 Manage Balance**: Add, deduct, or set user balance
+📢 **📢 Post Announcement**: Send announcement embed to any channel
+📊 **📈 Store Analytics**: View live sales, revenue, and active stock counts
+━━━━━━━━━━━━━━━━━━━━━`)
+                .setColor(0x8b5cf6)
+                .setFooter({ text: 'IdeaClick Store Staff Control System' })
+                .setTimestamp();
+
+            const row1 = new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId('mod_btn_add_product').setLabel('➕ Add Product').setStyle(ButtonStyle.Success),
+                new ButtonBuilder().setCustomId('mod_btn_restock').setLabel('📥 Restock Product').setStyle(ButtonStyle.Primary),
+                new ButtonBuilder().setCustomId('mod_btn_manage_bal').setLabel('💳 Manage Balance').setStyle(ButtonStyle.Secondary)
+            );
+
+            const row2 = new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId('mod_btn_announce').setLabel('📢 Post Announcement').setStyle(ButtonStyle.Secondary),
+                new ButtonBuilder().setCustomId('mod_btn_analytics').setLabel('📈 Store Analytics').setStyle(ButtonStyle.Primary)
+            );
+
+            await interaction.channel.send({ embeds: [embed], components: [row1, row2] });
+            await interaction.reply({ content: '✅ Moderator operations panel posted! Pin this message.', ...ephemeral });
+        }
+
+        if (interaction.isButton() && interaction.customId === 'mod_btn_add_product') {
+            if (!interaction.member.permissions.has('Administrator')) return await interaction.reply({ content: '❌ Admins only.', ...ephemeral });
+            const modal = new ModalBuilder()
+                .setCustomId('mod_modal_add_product')
+                .setTitle('➕ Add New Product')
+                .addComponents(
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('name').setLabel('Product Name').setStyle(TextInputStyle.Short).setPlaceholder('e.g., Netflix Premium 1 Month').setRequired(true)),
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('price').setLabel('Price in NPR').setStyle(TextInputStyle.Short).setPlaceholder('e.g., 350').setRequired(true)),
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('description').setLabel('Description').setStyle(TextInputStyle.Paragraph).setPlaceholder('Product features & warranty details...').setRequired(false)),
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('stock').setLabel('Initial Stock Keys (One per line)').setStyle(TextInputStyle.Paragraph).setPlaceholder('user:pass or license key 1\nuser:pass or license key 2').setRequired(false))
+                );
+            await interaction.showModal(modal);
+        }
+
+        if (interaction.isButton() && interaction.customId === 'mod_btn_restock') {
+            if (!interaction.member.permissions.has('Administrator')) return await interaction.reply({ content: '❌ Admins only.', ...ephemeral });
+            const localProducts = db.getLocalProducts();
+            if (localProducts.length === 0) {
+                return await interaction.reply({ content: '❌ No local products available to restock. Use **➕ Add Product** first!', ...ephemeral });
+            }
+
+            const selectMenu = new StringSelectMenuBuilder()
+                .setCustomId('mod_select_restock')
+                .setPlaceholder('Select a product to restock...')
+                .addOptions(
+                    localProducts.slice(0, 25).map(p => new StringSelectMenuOptionBuilder()
+                        .setLabel(p.name.substring(0, 50))
+                        .setValue(String(p.id))
+                        .setDescription(`Price: ${p.price} NPR | Current Stock: ${p.infinite_stock ? 'Infinite' : (p.stock ? p.stock.length : 0)}`)
+                    )
+                );
+
+            const row = new ActionRowBuilder().addComponents(selectMenu);
+            await interaction.reply({ content: '📦 Select the product you want to add stock keys to:', components: [row], ...ephemeral });
+        }
+
+        if (interaction.isStringSelectMenu() && interaction.customId === 'mod_select_restock') {
+            if (!interaction.member.permissions.has('Administrator')) return await interaction.reply({ content: '❌ Admins only.', ...ephemeral });
+            const productId = interaction.values[0];
+            const localProducts = db.getLocalProducts();
+            const product = localProducts.find(p => String(p.id) === String(productId));
+
+            if (!product) return await interaction.reply({ content: '❌ Product not found.', ...ephemeral });
+
+            const modal = new ModalBuilder()
+                .setCustomId(`mod_modal_restock_${product.id}`)
+                .setTitle(`📥 Restock: ${product.name.substring(0, 25)}`)
+                .addComponents(
+                    new ActionRowBuilder().addComponents(
+                        new TextInputBuilder()
+                            .setCustomId('stock')
+                            .setLabel('New Stock Keys (One per line)')
+                            .setStyle(TextInputStyle.Paragraph)
+                            .setPlaceholder('key1\nkey2\nkey3')
+                            .setRequired(true)
+                    )
+                );
+
+            await interaction.showModal(modal);
+        }
+
+        if (interaction.isButton() && interaction.customId === 'mod_btn_manage_bal') {
+            if (!interaction.member.permissions.has('Administrator')) return await interaction.reply({ content: '❌ Admins only.', ...ephemeral });
+            const embed = new EmbedBuilder()
+                .setTitle('💳 Balance Management Panel')
+                .setDescription('Select an operation below:')
+                .setColor(0xe67e22);
+
+            const row = new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId('admin_btn_add_bal').setLabel('➕ Add Balance').setStyle(ButtonStyle.Success),
+                new ButtonBuilder().setCustomId('admin_btn_sub_bal').setLabel('➖ Deduct Balance').setStyle(ButtonStyle.Danger),
+                new ButtonBuilder().setCustomId('admin_btn_search_user').setLabel('🔍 Search User').setStyle(ButtonStyle.Primary)
+            );
+
+            await interaction.reply({ embeds: [embed], components: [row], ...ephemeral });
+        }
+
+        if (interaction.isButton() && interaction.customId === 'mod_btn_announce') {
+            if (!interaction.member.permissions.has('Administrator')) return await interaction.reply({ content: '❌ Admins only.', ...ephemeral });
+            const modal = new ModalBuilder()
+                .setCustomId(`announce_modal_${interaction.channel.id}`)
+                .setTitle('📢 Send Announcement')
+                .addComponents(
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('ann_title').setLabel('Title').setStyle(TextInputStyle.Short).setPlaceholder('e.g., Special Restock Alert!').setRequired(true)),
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('ann_desc').setLabel('Message Body').setStyle(TextInputStyle.Paragraph).setPlaceholder('Write your announcement details here...').setRequired(true))
+                );
+            await interaction.showModal(modal);
+        }
+
+        if (interaction.isButton() && interaction.customId === 'mod_btn_analytics') {
+            if (!interaction.member.permissions.has('Administrator')) return await interaction.reply({ content: '❌ Admins only.', ...ephemeral });
+            const users = db.getAllUsers();
+            const localProducts = db.getLocalProducts();
+            const totalUsers = users.length;
+            const totalBalance = users.reduce((acc, u) => acc + (u.balance_npr || 0), 0).toFixed(2);
+            const totalPurchases = users.reduce((acc, u) => acc + (u.purchase_count || 0), 0);
+
+            const embed = new EmbedBuilder()
+                .setTitle('📊 Store Operational Analytics')
+                .addFields(
+                    { name: '👥 Total Registered Users', value: `\` ${totalUsers} \``, inline: true },
+                    { name: '💰 Total User Balance', value: `**${totalBalance} NPR**`, inline: true },
+                    { name: '🛒 Total Orders Completed', value: `\` ${totalPurchases} \``, inline: true },
+                    { name: '📦 Local Products Count', value: `\` ${localProducts.length} \``, inline: true }
+                )
+                .setColor(0x8b5cf6)
+                .setTimestamp();
+
+            await interaction.reply({ embeds: [embed], ...ephemeral });
+        }
+
+        if (interaction.isModalSubmit() && interaction.customId === 'mod_modal_add_product') {
+            if (!interaction.member.permissions.has('Administrator')) return await interaction.reply({ content: '❌ Admins only.', ...ephemeral });
+            const name = interaction.fields.getTextInputValue('name');
+            const price = parseFloat(interaction.fields.getTextInputValue('price'));
+            const description = interaction.fields.getTextInputValue('description') || '';
+            const rawStock = interaction.fields.getTextInputValue('stock') || '';
+
+            if (!name || isNaN(price) || price <= 0) return await interaction.reply({ content: '❌ Invalid name or price.', ...ephemeral });
+
+            const stockLines = rawStock.split('\n').map(s => s.trim()).filter(Boolean);
+            const product = db.addLocalProduct(name, description, price, stockLines);
+
+            db.appendLog({ action: 'mod_product_create', adminId: interaction.user.id, adminTag: interaction.user.tag, product_id: product.id, name, price });
+
+            await sendStaffLog(
+                new EmbedBuilder()
+                    .setTitle('🟢 Product Created via Moderator Panel')
+                    .setColor(0x2ecc71)
+                    .addFields(
+                        { name: 'Admin', value: `${interaction.user.tag} (\`${interaction.user.id}\`)`, inline: true },
+                        { name: 'Product Name', value: name, inline: true },
+                        { name: 'Price', value: `${price} NPR`, inline: true },
+                        { name: 'Initial Stock Count', value: `\` ${stockLines.length} items \``, inline: true }
+                    )
+                    .setTimestamp()
+            );
+
+            await updateAvailableProductsChannel();
+
+            const successEmbed = new EmbedBuilder()
+                .setTitle('✅ Product Successfully Created!')
+                .setDescription(`**${name}** has been added to the store catalog.`)
+                .addFields(
+                    { name: '💵 Price', value: `\` ${price} NPR \``, inline: true },
+                    { name: '📦 Initial Stock', value: `\` ${stockLines.length} \``, inline: true }
+                )
+                .setColor(0x2ecc71);
+
+            await interaction.reply({ embeds: [successEmbed], ...ephemeral });
+        }
+
+        if (interaction.isModalSubmit() && interaction.customId.startsWith('mod_modal_restock_')) {
+            if (!interaction.member.permissions.has('Administrator')) return await interaction.reply({ content: '❌ Admins only.', ...ephemeral });
+            const productId = interaction.customId.replace('mod_modal_restock_', '');
+            const rawStock = interaction.fields.getTextInputValue('stock') || '';
+            const addStockLines = rawStock.split('\n').map(s => s.trim()).filter(Boolean);
+
+            if (addStockLines.length === 0) return await interaction.reply({ content: '❌ No stock lines entered.', ...ephemeral });
+
+            try {
+                const product = db.updateLocalProduct(productId, { addStockLines });
+
+                db.appendLog({ action: 'mod_product_restock', adminId: interaction.user.id, adminTag: interaction.user.tag, product_id: productId, count: addStockLines.length });
+
+                await sendStaffLog(
+                    new EmbedBuilder()
+                        .setTitle('📦 Product Restocked via Moderator Panel')
+                        .setColor(0x3498db)
+                        .addFields(
+                            { name: 'Admin', value: `${interaction.user.tag} (\`${interaction.user.id}\`)`, inline: true },
+                            { name: 'Product Name', value: product.name, inline: true },
+                            { name: 'Keys Added', value: `\` +${addStockLines.length} items \``, inline: true },
+                            { name: 'New Total Stock', value: `\` ${product.stock ? product.stock.length : 0} \``, inline: true }
+                        )
+                        .setTimestamp()
+                );
+
+                await updateAvailableProductsChannel();
+
+                const successEmbed = new EmbedBuilder()
+                    .setTitle('✅ Product Restocked!')
+                    .setDescription(`Added **+${addStockLines.length} stock items** to **${product.name}**.`)
+                    .addFields(
+                        { name: '📦 New Total Stock', value: `**${product.stock ? product.stock.length : 0} items**`, inline: true }
+                    )
+                    .setColor(0x2ecc71);
+
+                await interaction.reply({ embeds: [successEmbed], ...ephemeral });
+            } catch (err) {
+                await interaction.reply({ content: `❌ Error restocking: ${err.message}`, ...ephemeral });
+            }
         }
 
         if (interaction.isButton() && interaction.customId === 'start') {

@@ -73,6 +73,10 @@ const commands = [
         name: 'pin-leaderboard',
         description: 'Pin the live User Balance & Loyalty Points Leaderboard to current channel (Admins only)',
     },
+    {
+        name: 'pin-mod-panel',
+        description: 'Pin the Moderator Interactive Operations Panel to current channel (Admins only)',
+    },
 ];
 
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);

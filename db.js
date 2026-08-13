@@ -368,6 +368,24 @@ function retrieveLocalStock(id, qty) {
     return items;
 }
 
+function setBalance(discordId, amount) {
+    const users = readJSON(usersPath);
+    const user = users[discordId];
+    if (!user) throw new Error('User not found');
+    const targetAmount = Number(Number(amount).toFixed(2));
+    if (targetAmount < 0) throw new Error('Balance cannot be negative');
+    user.balance_npr = targetAmount;
+    writeJSON(usersPath, users);
+    return user.balance_npr;
+}
+
+function getTopUsers(limit = 10) {
+    const users = getAllUsers();
+    return users
+        .sort((a, b) => (b.balance_npr + b.loyalty_points) - (a.balance_npr + a.loyalty_points))
+        .slice(0, limit);
+}
+
 module.exports = {
     getUser,
     ensureUser,
@@ -378,6 +396,8 @@ module.exports = {
     redeemPoints,
     dailyClaim,
     adjustBalance,
+    setBalance,
+    getTopUsers,
     getUserHistory,
     getConfig,
     setConfig,

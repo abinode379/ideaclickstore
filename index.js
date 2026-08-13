@@ -235,6 +235,61 @@ async function updateAvailableProductsChannel() {
     }
 }
 
+async function updateLeaderboardChannel() {
+    try {
+        const channelId = db.getConfig('balance_leaderboard_channel_id');
+        if (!channelId) return;
+        const channel = await client.channels.fetch(channelId).catch(() => null);
+        if (!channel) return;
+
+        const topUsers = db.getTopUsers(10);
+        
+        let leaderboardText = `🏆 **Top Members Balance & Loyalty Points**\n\n`;
+        if (topUsers.length === 0) {
+            leaderboardText += `*No user records found yet.*`;
+        } else {
+            topUsers.forEach((u, idx) => {
+                const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `\`#${idx + 1}\``;
+                const name = u.username ? `@${u.username}` : `<@${u.discord_id}>`;
+                leaderboardText += `${medal} **${name}**\n┗ 💰 Balance: **${u.balance_npr} NPR** | 🏆 Points: **${u.loyalty_points || 0} pts** | 🛒 Purchases: **${u.purchase_count || 0}**\n\n`;
+            });
+        }
+
+        const embed = new EmbedBuilder()
+            .setTitle('💎 IdeaClick User Balance & Loyalty Leaderboard')
+            .setDescription(leaderboardText)
+            .setColor(0xF1C40F)
+            .setFooter({ text: 'Updated automatically • Click button below to check your own balance!' })
+            .setTimestamp();
+
+        const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+                .setCustomId('user_check_balance')
+                .setLabel('💳 Check My Balance & Points')
+                .setStyle(ButtonStyle.Success)
+        );
+
+        let botMessage = null;
+        try {
+            const messages = await channel.messages.fetch({ limit: 50 });
+            botMessage = messages.find(m => m.author.id === client.user.id);
+        } catch (fetchErr) {
+            log.warn({ err: fetchErr.message }, 'Failed to fetch messages in leaderboard channel.');
+        }
+
+        if (botMessage) {
+            await botMessage.edit({ embeds: [embed], components: [row] }).catch(async () => {
+                await channel.send({ embeds: [embed], components: [row] });
+            });
+        } else {
+            await channel.send({ embeds: [embed], components: [row] });
+        }
+        log.info('Leaderboard channel updated successfully.');
+    } catch (e) {
+        log.error({ err: e.message }, 'Global leaderboard update error');
+    }
+}
+
 async function trackStockChanges() {
     try {
         const allProducts = await getMergedProducts();
@@ -348,7 +403,9 @@ client.once('clientReady', async () => {
     log.info({ user: client.user.tag }, 'Bot logged in');
     await trackStockChanges();
     await updateAvailableProductsChannel();
+    await updateLeaderboardChannel();
     setInterval(trackStockChanges, 1 * 60 * 1000); 
+    setInterval(updateLeaderboardChannel, 5 * 60 * 1000);
     
     // Watch config.json for settings/hidden changes to live update Discord channel
     const fs = require('fs');
@@ -359,8 +416,9 @@ client.once('clientReady', async () => {
         if (eventType === 'change') {
             if (watchTimeout) clearTimeout(watchTimeout);
             watchTimeout = setTimeout(async () => {
-                log.info('Detected configuration change on disk, syncing live catalog channel...');
+                log.info('Detected configuration change on disk, syncing live catalog & leaderboard channels...');
                 await updateAvailableProductsChannel().catch(() => null);
+                await updateLeaderboardChannel().catch(() => null);
             }, 1500);
         }
     });
@@ -680,6 +738,261 @@ Join our support channel or open a ticket!
                 .setTimestamp();
             await interaction.channel.send({ embeds: [embed], components: [startRow] });
             await interaction.reply({ content: '✅ Permanent Start button posted! Pin this message.', ...ephemeral });
+        }
+
+        if (interaction.isChatInputCommand() && interaction.commandName === 'manage-balance') {
+            if (!interaction.member.permissions.has('Administrator')) {
+                return await interaction.reply({ content: '❌ Admins only.', ...ephemeral });
+            }
+            const targetUser = interaction.options.getUser('user');
+            const action = interaction.options.getString('action');
+            const amount = interaction.options.getNumber('amount');
+            const reason = interaction.options.getString('reason') || 'No reason specified';
+
+            try {
+                db.ensureUser(targetUser.id, targetUser.tag);
+                let newBalance = 0;
+                if (action === 'add') {
+                    newBalance = db.addBalance(targetUser.id, targetUser.tag, amount);
+                } else if (action === 'subtract') {
+                    newBalance = db.adjustBalance(targetUser.id, -amount);
+                } else if (action === 'set') {
+                    newBalance = db.setBalance(targetUser.id, amount);
+                }
+
+                db.appendLog({
+                    action: 'discord_balance_manage',
+                    adminId: interaction.user.id,
+                    adminTag: interaction.user.tag,
+                    targetUserId: targetUser.id,
+                    actionType: action,
+                    amount,
+                    newBalance,
+                    reason
+                });
+
+                await sendStaffLog(
+                    new EmbedBuilder()
+                        .setTitle('💰 Balance Updated via Discord Command')
+                        .setColor(0x3498db)
+                        .addFields(
+                            { name: 'Admin', value: `${interaction.user.tag} (\`${interaction.user.id}\`)`, inline: true },
+                            { name: 'Target User', value: `${targetUser.tag} (\`${targetUser.id}\`)`, inline: true },
+                            { name: 'Action', value: `\` ${action.toUpperCase()} ${amount} NPR \``, inline: true },
+                            { name: 'New Balance', value: `\` ${newBalance} NPR \``, inline: true },
+                            { name: 'Reason', value: reason, inline: false }
+                        )
+                        .setTimestamp()
+                );
+
+                await updateLeaderboardChannel();
+
+                const successEmbed = new EmbedBuilder()
+                    .setTitle('✅ User Balance Updated')
+                    .setDescription(`Successfully updated balance for <@${targetUser.id}>!`)
+                    .addFields(
+                        { name: 'Action', value: `\` ${action.toUpperCase()} \``, inline: true },
+                        { name: 'Amount', value: `\` ${amount} NPR \``, inline: true },
+                        { name: 'New Balance', value: `**${newBalance} NPR**`, inline: true },
+                        { name: 'Reason', value: reason, inline: false }
+                    )
+                    .setColor(0x2ecc71);
+
+                await interaction.reply({ embeds: [successEmbed], ...ephemeral });
+            } catch (err) {
+                await interaction.reply({ content: `❌ Error updating balance: ${err.message}`, ...ephemeral });
+            }
+        }
+
+        if (interaction.isChatInputCommand() && interaction.commandName === 'user-info') {
+            const targetUser = interaction.options.getUser('user');
+            const user = db.getUser(targetUser.id);
+            if (!user) {
+                return await interaction.reply({ content: `❌ No account record found for <@${targetUser.id}>.`, ...ephemeral });
+            }
+
+            const embed = new EmbedBuilder()
+                .setTitle(`👤 User Overview: ${targetUser.tag}`)
+                .setThumbnail(targetUser.displayAvatarURL({ dynamic: true }))
+                .addFields(
+                    { name: 'Discord ID', value: `\` ${targetUser.id} \``, inline: true },
+                    { name: '💰 Balance', value: `**${user.balance_npr} NPR**`, inline: true },
+                    { name: '🏆 Loyalty Points', value: `**${user.loyalty_points || 0} pts**`, inline: true },
+                    { name: '🛒 Total Purchases', value: `\` ${user.purchase_history ? user.purchase_history.length : 0} orders \``, inline: true }
+                )
+                .setColor(0x8b5cf6)
+                .setTimestamp();
+
+            await interaction.reply({ embeds: [embed], ...ephemeral });
+        }
+
+        if (interaction.isChatInputCommand() && interaction.commandName === 'pin-balance-panel') {
+            if (!interaction.member.permissions.has('Administrator')) {
+                return await interaction.reply({ content: '❌ Admins only.', ...ephemeral });
+            }
+
+            db.setConfig('balance_manage_channel_id', interaction.channel.id);
+
+            const embed = new EmbedBuilder()
+                .setTitle('⚙️ Admin Balance Control Panel')
+                .setDescription(`━━━━━━━━━━━━━━━━━━━━━
+Use this panel to manage user balances and lookup user accounts directly from Discord.
+
+Buttons below allow you to:
+• **➕ Add Balance**: Credit funds to a user account
+• **➖ Deduct Balance**: Remove funds from a user account
+• **🔍 User Lookup**: View any member's balance & loyalty points
+━━━━━━━━━━━━━━━━━━━━━`)
+                .setColor(0xe67e22)
+                .setFooter({ text: 'IdeaClick Admin Operations Panel' })
+                .setTimestamp();
+
+            const row = new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId('admin_btn_add_bal').setLabel('➕ Add Balance').setStyle(ButtonStyle.Success),
+                new ButtonBuilder().setCustomId('admin_btn_sub_bal').setLabel('➖ Deduct Balance').setStyle(ButtonStyle.Danger),
+                new ButtonBuilder().setCustomId('admin_btn_search_user').setLabel('🔍 Search User').setStyle(ButtonStyle.Primary)
+            );
+
+            await interaction.channel.send({ embeds: [embed], components: [row] });
+            await interaction.reply({ content: '✅ Admin balance control panel posted! This channel is saved as the balance management channel.', ...ephemeral });
+        }
+
+        if (interaction.isChatInputCommand() && interaction.commandName === 'pin-leaderboard') {
+            if (!interaction.member.permissions.has('Administrator')) {
+                return await interaction.reply({ content: '❌ Admins only.', ...ephemeral });
+            }
+
+            db.setConfig('balance_leaderboard_channel_id', interaction.channel.id);
+            await updateLeaderboardChannel();
+            await interaction.reply({ content: '✅ Live Leaderboard channel posted! This channel is saved as the balance leaderboard channel.', ...ephemeral });
+        }
+
+        if (interaction.isButton() && interaction.customId === 'user_check_balance') {
+            db.ensureUser(interaction.user.id, interaction.user.tag);
+            const user = db.getUser(interaction.user.id);
+
+            const embed = new EmbedBuilder()
+                .setTitle('💳 Your Account Balance & Loyalty Points')
+                .setDescription(`Hello <@${interaction.user.id}>! Here is your current account breakdown:`)
+                .addFields(
+                    { name: '💰 Account Balance', value: `**${user.balance_npr} NPR**`, inline: true },
+                    { name: '🏆 Loyalty Points', value: `**${user.loyalty_points || 0} pts**`, inline: true },
+                    { name: '🛒 Total Purchases', value: `\` ${user.purchase_history ? user.purchase_history.length : 0} \``, inline: true }
+                )
+                .setColor(0x2ecc71)
+                .setThumbnail(interaction.user.displayAvatarURL({ dynamic: true }))
+                .setTimestamp();
+
+            await interaction.reply({ embeds: [embed], ...ephemeral });
+        }
+
+        if (interaction.isButton() && interaction.customId === 'admin_btn_add_bal') {
+            if (!interaction.member.permissions.has('Administrator')) return await interaction.reply({ content: '❌ Admins only.', ...ephemeral });
+            const modal = new ModalBuilder()
+                .setCustomId('admin_modal_add_bal')
+                .setTitle('➕ Add User Balance')
+                .addComponents(
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('user_id').setLabel('User ID or Mention').setStyle(TextInputStyle.Short).setPlaceholder('e.g., 123456789012345678').setRequired(true)),
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('amount').setLabel('Amount (NPR)').setStyle(TextInputStyle.Short).setPlaceholder('e.g., 500').setRequired(true)),
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('reason').setLabel('Reason').setStyle(TextInputStyle.Short).setPlaceholder('e.g., Manual deposit / Bonus').setRequired(false))
+                );
+            await interaction.showModal(modal);
+        }
+
+        if (interaction.isButton() && interaction.customId === 'admin_btn_sub_bal') {
+            if (!interaction.member.permissions.has('Administrator')) return await interaction.reply({ content: '❌ Admins only.', ...ephemeral });
+            const modal = new ModalBuilder()
+                .setCustomId('admin_modal_sub_bal')
+                .setTitle('➖ Deduct User Balance')
+                .addComponents(
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('user_id').setLabel('User ID or Mention').setStyle(TextInputStyle.Short).setPlaceholder('e.g., 123456789012345678').setRequired(true)),
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('amount').setLabel('Amount (NPR)').setStyle(TextInputStyle.Short).setPlaceholder('e.g., 200').setRequired(true)),
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('reason').setLabel('Reason').setStyle(TextInputStyle.Short).setPlaceholder('e.g., Correction / Adjustment').setRequired(false))
+                );
+            await interaction.showModal(modal);
+        }
+
+        if (interaction.isButton() && interaction.customId === 'admin_btn_search_user') {
+            if (!interaction.member.permissions.has('Administrator')) return await interaction.reply({ content: '❌ Admins only.', ...ephemeral });
+            const modal = new ModalBuilder()
+                .setCustomId('admin_modal_search_user')
+                .setTitle('🔍 Search User Account')
+                .addComponents(
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('user_id').setLabel('User ID or Mention').setStyle(TextInputStyle.Short).setPlaceholder('e.g., 123456789012345678').setRequired(true))
+                );
+            await interaction.showModal(modal);
+        }
+
+        if (interaction.isModalSubmit() && (interaction.customId === 'admin_modal_add_bal' || interaction.customId === 'admin_modal_sub_bal')) {
+            if (!interaction.member.permissions.has('Administrator')) return await interaction.reply({ content: '❌ Admins only.', ...ephemeral });
+            const rawUser = interaction.fields.getTextInputValue('user_id').replace(/[<@!>]/g, '').trim();
+            const amount = parseFloat(interaction.fields.getTextInputValue('amount'));
+            const reason = interaction.fields.getTextInputValue('reason') || 'No reason specified';
+
+            if (isNaN(amount) || amount <= 0) return await interaction.reply({ content: '❌ Invalid amount.', ...ephemeral });
+
+            try {
+                const isAdd = interaction.customId === 'admin_modal_add_bal';
+                db.ensureUser(rawUser);
+                const newBalance = isAdd ? db.addBalance(rawUser, '', amount) : db.adjustBalance(rawUser, -amount);
+
+                db.appendLog({
+                    action: 'discord_balance_modal',
+                    adminId: interaction.user.id,
+                    adminTag: interaction.user.tag,
+                    targetUserId: rawUser,
+                    actionType: isAdd ? 'add' : 'subtract',
+                    amount,
+                    newBalance,
+                    reason
+                });
+
+                await sendStaffLog(
+                    new EmbedBuilder()
+                        .setTitle(`💰 Balance ${isAdd ? 'Added' : 'Deducted'} via Discord Panel`)
+                        .setColor(isAdd ? 0x2ecc71 : 0xe74c3c)
+                        .addFields(
+                            { name: 'Admin', value: `${interaction.user.tag} (\`${interaction.user.id}\`)`, inline: true },
+                            { name: 'Target User', value: `<@${rawUser}> (\`${rawUser}\`)`, inline: true },
+                            { name: 'Amount', value: `\` ${isAdd ? '+' : '-'}${amount} NPR \``, inline: true },
+                            { name: 'New Balance', value: `\` ${newBalance} NPR \``, inline: true },
+                            { name: 'Reason', value: reason, inline: false }
+                        )
+                        .setTimestamp()
+                );
+
+                await updateLeaderboardChannel();
+
+                const resEmbed = new EmbedBuilder()
+                    .setTitle(`✅ Balance ${isAdd ? 'Added' : 'Deducted'}`)
+                    .setDescription(`Target User: <@${rawUser}>\nAmount: **${isAdd ? '+' : '-'}${amount} NPR**\nNew Balance: **${newBalance} NPR**\nReason: *${reason}*`)
+                    .setColor(isAdd ? 0x2ecc71 : 0xe74c3c);
+
+                await interaction.reply({ embeds: [resEmbed], ...ephemeral });
+            } catch (err) {
+                await interaction.reply({ content: `❌ Error: ${err.message}`, ...ephemeral });
+            }
+        }
+
+        if (interaction.isModalSubmit() && interaction.customId === 'admin_modal_search_user') {
+            if (!interaction.member.permissions.has('Administrator')) return await interaction.reply({ content: '❌ Admins only.', ...ephemeral });
+            const rawUser = interaction.fields.getTextInputValue('user_id').replace(/[<@!>]/g, '').trim();
+            const user = db.getUser(rawUser);
+            if (!user) return await interaction.reply({ content: `❌ User \`${rawUser}\` not found in database.`, ...ephemeral });
+
+            const embed = new EmbedBuilder()
+                .setTitle(`🔍 User Account Details`)
+                .addFields(
+                    { name: 'User ID', value: `\` ${user.discord_id} \``, inline: true },
+                    { name: 'Username', value: user.username || 'Unknown', inline: true },
+                    { name: '💰 Balance', value: `**${user.balance_npr} NPR**`, inline: true },
+                    { name: '🏆 Loyalty Points', value: `**${user.loyalty_points || 0} pts**`, inline: true },
+                    { name: '🛒 Total Orders', value: `\` ${user.purchase_history ? user.purchase_history.length : 0} \``, inline: true }
+                )
+                .setColor(0x3498db)
+                .setTimestamp();
+
+            await interaction.reply({ embeds: [embed], ...ephemeral });
         }
 
         if (interaction.isButton() && interaction.customId === 'start') {

@@ -1020,6 +1020,7 @@ Use the interactive buttons below to manage shop inventory, user accounts, and a
             const row1 = new ActionRowBuilder().addComponents(
                 new ButtonBuilder().setCustomId('mod_btn_add_product').setLabel('➕ Add Product').setStyle(ButtonStyle.Success),
                 new ButtonBuilder().setCustomId('mod_btn_restock').setLabel('📥 Restock Product').setStyle(ButtonStyle.Primary),
+                new ButtonBuilder().setCustomId('mod_btn_provide_bal').setLabel('💰 Provide Balance').setStyle(ButtonStyle.Success),
                 new ButtonBuilder().setCustomId('mod_btn_manage_bal').setLabel('💳 Manage Balance').setStyle(ButtonStyle.Secondary)
             );
 
@@ -1030,6 +1031,81 @@ Use the interactive buttons below to manage shop inventory, user accounts, and a
 
             await interaction.channel.send({ embeds: [embed], components: [row1, row2] });
             await interaction.reply({ content: '✅ Moderator operations panel posted! Pin this message.', ...ephemeral });
+        }
+
+        if (interaction.isButton() && interaction.customId === 'mod_btn_provide_bal') {
+            if (!interaction.member.permissions.has('Administrator')) return await interaction.reply({ content: '❌ Admins only.', ...ephemeral });
+            const modal = new ModalBuilder()
+                .setCustomId('mod_modal_provide_bal')
+                .setTitle('💰 Provide User Balance')
+                .addComponents(
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('user_id').setLabel('User ID or Mention').setStyle(TextInputStyle.Short).setPlaceholder('e.g., 123456789012345678').setRequired(true)),
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('amount').setLabel('Amount to Provide (NPR)').setStyle(TextInputStyle.Short).setPlaceholder('e.g., 500').setRequired(true)),
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('reason').setLabel('Reason / Note').setStyle(TextInputStyle.Short).setPlaceholder('e.g., Deposit credit / Manual refund').setRequired(false))
+                );
+            await interaction.showModal(modal);
+        }
+
+        if (interaction.isModalSubmit() && interaction.customId === 'mod_modal_provide_bal') {
+            if (!interaction.member.permissions.has('Administrator')) return await interaction.reply({ content: '❌ Admins only.', ...ephemeral });
+            const rawUser = interaction.fields.getTextInputValue('user_id').replace(/[<@!>]/g, '').trim();
+            const amount = parseFloat(interaction.fields.getTextInputValue('amount'));
+            const reason = interaction.fields.getTextInputValue('reason') || 'No reason specified';
+
+            if (isNaN(amount) || amount <= 0) return await interaction.reply({ content: '❌ Invalid amount.', ...ephemeral });
+
+            try {
+                db.ensureUser(rawUser);
+                const prevUser = db.getUser(rawUser);
+                const prevBalance = prevUser ? (prevUser.balance_npr || 0) : 0;
+
+                const newBalance = db.addBalance(rawUser, '', amount);
+
+                db.appendLog({
+                    action: 'discord_provide_balance',
+                    adminId: interaction.user.id,
+                    adminTag: interaction.user.tag,
+                    targetUserId: rawUser,
+                    amount,
+                    prevBalance,
+                    newBalance,
+                    reason
+                });
+
+                await sendStaffLog(
+                    new EmbedBuilder()
+                        .setTitle('💰 Balance Provided via Moderator Panel')
+                        .setColor(0x2ecc71)
+                        .addFields(
+                            { name: 'Admin', value: `${interaction.user.tag} (\`${interaction.user.id}\`)`, inline: true },
+                            { name: 'Target User', value: `<@${rawUser}> (\`${rawUser}\`)`, inline: true },
+                            { name: 'Previous Real Balance', value: `\` ${prevBalance} NPR \``, inline: true },
+                            { name: '➕ Provided Amount', value: `\` +${amount} NPR \``, inline: true },
+                            { name: '💰 Updated Real Balance', value: `\` ${newBalance} NPR \``, inline: true },
+                            { name: 'Reason', value: reason, inline: false }
+                        )
+                        .setTimestamp()
+                );
+
+                await updateLeaderboardChannel();
+
+                const resEmbed = new EmbedBuilder()
+                    .setTitle('✅ Balance Successfully Provided!')
+                    .setDescription(`Credit of **+${amount} NPR** has been added to user account <@${rawUser}>.`)
+                    .addFields(
+                        { name: '👤 Target User', value: `<@${rawUser}> (\`${rawUser}\`)`, inline: false },
+                        { name: '💳 Previous Real Balance', value: `\` ${prevBalance} NPR \``, inline: true },
+                        { name: '➕ Provided Amount', value: `\` +${amount} NPR \``, inline: true },
+                        { name: '💰 Updated Real Balance', value: `**${newBalance} NPR**`, inline: true },
+                        { name: '📝 Reason', value: `*${reason}*`, inline: false }
+                    )
+                    .setColor(0x2ecc71)
+                    .setTimestamp();
+
+                await interaction.reply({ embeds: [resEmbed], ...ephemeral });
+            } catch (err) {
+                await interaction.reply({ content: `❌ Error providing balance: ${err.message}`, ...ephemeral });
+            }
         }
 
         if (interaction.isButton() && interaction.customId === 'mod_btn_add_product') {

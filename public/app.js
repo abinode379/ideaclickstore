@@ -774,6 +774,11 @@ async function loadUsers() {
         const res = await fetch('/api/users');
         if (!res.ok) throw new Error('Failed to fetch users');
         allUsers = await res.json();
+
+        const totalSysBal = allUsers.reduce((acc, u) => acc + (u.balance_npr || 0), 0);
+        const sysBalElem = document.getElementById('total-system-real-balance');
+        if (sysBalElem) sysBalElem.innerText = formatNumber(totalSysBal);
+
         renderUsers(allUsers);
     } catch (err) {
         list.innerHTML = `<div style="text-align:center; color: var(--danger); padding: 2rem;">${err.message}</div>`;
@@ -790,6 +795,40 @@ async function loadUsers() {
                 (u.username && u.username.toLowerCase().includes(query))
             );
             renderUsers(filtered);
+        };
+    }
+
+    // Setup Quick Provide Balance Button
+    const quickProvideBtn = document.getElementById('quick-provide-btn');
+    if (quickProvideBtn) {
+        quickProvideBtn.onclick = async () => {
+            const userId = document.getElementById('quick-provide-user-id').value.trim().replace(/[<@!>]/g, '');
+            const amount = parseFloat(document.getElementById('quick-provide-amount').value);
+            const reason = document.getElementById('quick-provide-reason').value.trim() || 'Manual balance provide via admin dashboard';
+
+            if (!userId || isNaN(amount) || amount <= 0) {
+                showToast('Please enter a valid User ID and amount', 'error');
+                return;
+            }
+
+            try {
+                const res = await fetch(`/api/users/${userId}/balance`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ amount, reason })
+                });
+
+                const data = await res.json();
+                if (!res.ok || data.error) throw new Error(data.error || 'Failed to provide balance');
+
+                showToast(`Successfully provided +${amount} NPR! New Real Balance: ${data.newBalance} NPR`, 'success');
+                document.getElementById('quick-provide-user-id').value = '';
+                document.getElementById('quick-provide-amount').value = '';
+                document.getElementById('quick-provide-reason').value = '';
+                loadUsers();
+            } catch (err) {
+                showToast(err.message, 'error');
+            }
         };
     }
 }

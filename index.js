@@ -1025,12 +1025,41 @@ Use the interactive buttons below to manage shop inventory, user accounts, and a
             );
 
             const row2 = new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId('mod_btn_provider_bal').setLabel('💳 Provider Balance (USDT)').setStyle(ButtonStyle.Success),
                 new ButtonBuilder().setCustomId('mod_btn_announce').setLabel('📢 Post Announcement').setStyle(ButtonStyle.Secondary),
                 new ButtonBuilder().setCustomId('mod_btn_analytics').setLabel('📈 Store Analytics').setStyle(ButtonStyle.Primary)
             );
 
             await interaction.channel.send({ embeds: [embed], components: [row1, row2] });
             await interaction.reply({ content: '✅ Moderator operations panel posted! Pin this message.', ...ephemeral });
+        }
+
+        if (interaction.isButton() && interaction.customId === 'mod_btn_provider_bal') {
+            if (!interaction.member.permissions.has('Administrator')) return await interaction.reply({ content: '❌ Admins only.', ...ephemeral });
+            await interaction.deferReply(ephemeral);
+            try {
+                const res = await tunvnmmoAPI.get('/balance');
+                const data = res.data;
+                const usdtBalance = Number(data.balance_usdt || 0).toFixed(2);
+                const rate = db.getConfig('usdt_to_npr_rate') || 250;
+                const nprEst = (Number(usdtBalance) * rate).toFixed(2);
+
+                const embed = new EmbedBuilder()
+                    .setTitle('💳 Supplier Provider Main Wallet')
+                    .setDescription(`Live balance fetched directly from supplier API account:`)
+                    .addFields(
+                        { name: '👤 Supplier Account', value: `\` ${data.username || 'Main Wallet'} \``, inline: true },
+                        { name: '💵 Main Wallet Balance', value: `**${usdtBalance} USDT**`, inline: true },
+                        { name: '🇳🇵 Estimated Value in NPR', value: `\` ${nprEst} NPR \` *(Rate: ${rate})*`, inline: false }
+                    )
+                    .setColor(0x2ecc71)
+                    .setFooter({ text: 'TunvnMMO Supplier Account Status' })
+                    .setTimestamp();
+
+                await interaction.editReply({ embeds: [embed] });
+            } catch (err) {
+                await interaction.editReply({ content: `❌ Failed to fetch supplier provider balance: ${err.message}` });
+            }
         }
 
         if (interaction.isButton() && interaction.customId === 'mod_btn_provide_bal') {
@@ -1199,24 +1228,34 @@ Use the interactive buttons below to manage shop inventory, user accounts, and a
 
         if (interaction.isButton() && interaction.customId === 'mod_btn_analytics') {
             if (!interaction.member.permissions.has('Administrator')) return await interaction.reply({ content: '❌ Admins only.', ...ephemeral });
+            await interaction.deferReply(ephemeral);
             const users = db.getAllUsers();
             const localProducts = db.getLocalProducts();
             const totalUsers = users.length;
             const totalBalance = users.reduce((acc, u) => acc + (u.balance_npr || 0), 0).toFixed(2);
             const totalPurchases = users.reduce((acc, u) => acc + (u.purchase_count || 0), 0);
 
+            let providerUsdt = 'N/A';
+            try {
+                const pRes = await tunvnmmoAPI.get('/balance');
+                if (pRes.data && pRes.data.balance_usdt !== undefined) {
+                    providerUsdt = `${Number(pRes.data.balance_usdt).toFixed(2)} USDT`;
+                }
+            } catch (e) {}
+
             const embed = new EmbedBuilder()
                 .setTitle('📊 Store Operational Analytics')
                 .addFields(
                     { name: '👥 Total Registered Users', value: `\` ${totalUsers} \``, inline: true },
                     { name: '💰 Total User Balance', value: `**${totalBalance} NPR**`, inline: true },
+                    { name: '💳 Provider Wallet (USDT)', value: `**${providerUsdt}**`, inline: true },
                     { name: '🛒 Total Orders Completed', value: `\` ${totalPurchases} \``, inline: true },
                     { name: '📦 Local Products Count', value: `\` ${localProducts.length} \``, inline: true }
                 )
                 .setColor(0x8b5cf6)
                 .setTimestamp();
 
-            await interaction.reply({ embeds: [embed], ...ephemeral });
+            await interaction.editReply({ embeds: [embed] });
         }
 
         if (interaction.isModalSubmit() && interaction.customId === 'mod_modal_add_product') {

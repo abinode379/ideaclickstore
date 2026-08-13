@@ -493,6 +493,18 @@ app.get('/api/analytics', ensureAuthAPI, (req, res) => {
 });
 
 
+app.get('/api/provider-balance', ensureAuthAPI, async (req, res) => {
+    try {
+        const response = await axios.get('https://tunvnmmo.duckdns.org/api/balance', {
+            headers: { 'X-API-Key': process.env.TUNVNMMO_API_KEY }
+        });
+        res.json(response.data);
+    } catch (err) {
+        log.error({ error: err.message }, 'Failed to fetch provider balance');
+        res.status(500).json({ error: 'Failed to fetch provider balance' });
+    }
+});
+
 app.get('/api/logs', ensureAuthAPI, (req, res) => {
     res.json(db.getLogs(req.query.filter || null, 200));
 });

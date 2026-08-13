@@ -269,6 +269,20 @@ async function loadDashboard() {
             if (statProducts) statProducts.innerText = formatNumber(products.length);
         }
 
+        // Fetch Provider Wallet Balance
+        try {
+            const providerRes = await fetch('/api/provider-balance');
+            if (providerRes.ok) {
+                const pData = await providerRes.json();
+                const statProvider = document.getElementById('stat-provider-balance');
+                if (statProvider && pData.balance_usdt !== undefined) {
+                    statProvider.innerText = `${formatNumber(pData.balance_usdt)} USDT`;
+                }
+            }
+        } catch (pErr) {
+            console.error('Provider balance load error:', pErr);
+        }
+
 
 
         // Fetch Analytics

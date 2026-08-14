@@ -301,7 +301,7 @@ function saveLocalProducts(products) {
     writeJSON(localProductsPath, products);
 }
 
-function addLocalProduct(name, description, price, stockLines = [], infinite_stock = false) {
+function addLocalProduct(name, description, price, stockLines = [], infinite_stock = false, validity = '1 Month') {
     const products = getLocalProducts();
     const id = 'local_' + Date.now();
     const newProduct = {
@@ -311,7 +311,8 @@ function addLocalProduct(name, description, price, stockLines = [], infinite_sto
         price: Number(price),
         stock: Array.isArray(stockLines) ? stockLines.filter(Boolean) : [],
         hidden: false,
-        infinite_stock: !!infinite_stock
+        infinite_stock: !!infinite_stock,
+        validity: validity || '1 Month'
     };
     products.push(newProduct);
     saveLocalProducts(products);
@@ -328,6 +329,7 @@ function updateLocalProduct(id, updates) {
     if (updates.price !== undefined) product.price = Number(updates.price);
     if (updates.hidden !== undefined) product.hidden = !!updates.hidden;
     if (updates.infinite_stock !== undefined) product.infinite_stock = !!updates.infinite_stock;
+    if (updates.validity !== undefined) product.validity = updates.validity;
     
     if (Array.isArray(updates.stock)) {
         product.stock = updates.stock.filter(Boolean);

@@ -140,6 +140,7 @@ app.get('/api/settings', ensureAuthAPI, (req, res) => {
         backup_channel_id: db.getConfig('backup_channel_id'),
         balance_manage_channel_id: db.getConfig('balance_manage_channel_id'),
         balance_leaderboard_channel_id: db.getConfig('balance_leaderboard_channel_id'),
+        pricing_channel_id: db.getConfig('pricing_channel_id'),
         loyalty_earn_rate: db.getConfig('loyalty_earn_rate') !== undefined ? db.getConfig('loyalty_earn_rate') : 10,
         loyalty_redeem_rate: db.getConfig('loyalty_redeem_rate') !== undefined ? db.getConfig('loyalty_redeem_rate') : 10,
         shop_theme_color: db.getConfig('shop_theme_color') || '#8b5cf6',
@@ -150,7 +151,7 @@ app.get('/api/settings', ensureAuthAPI, (req, res) => {
 });
 
 app.post('/api/settings', ensureAuthAPI, (req, res) => {
-    const { usdt_to_npr_rate, notification_channel_id, live_sales_channel_id, available_products_channel_id, backup_channel_id, balance_manage_channel_id, balance_leaderboard_channel_id, loyalty_earn_rate, loyalty_redeem_rate, shop_theme_color, shop_menu_banner, shop_menu_thumbnail, auto_sort_by_stock } = req.body;
+    const { usdt_to_npr_rate, notification_channel_id, live_sales_channel_id, available_products_channel_id, backup_channel_id, balance_manage_channel_id, balance_leaderboard_channel_id, pricing_channel_id, loyalty_earn_rate, loyalty_redeem_rate, shop_theme_color, shop_menu_banner, shop_menu_thumbnail, auto_sort_by_stock } = req.body;
     if (usdt_to_npr_rate !== undefined) db.setConfig('usdt_to_npr_rate', usdt_to_npr_rate);
     if (notification_channel_id !== undefined) db.setConfig('notification_channel_id', notification_channel_id);
     if (live_sales_channel_id !== undefined) db.setConfig('live_sales_channel_id', live_sales_channel_id);
@@ -158,6 +159,7 @@ app.post('/api/settings', ensureAuthAPI, (req, res) => {
     if (backup_channel_id !== undefined) db.setConfig('backup_channel_id', backup_channel_id);
     if (balance_manage_channel_id !== undefined) db.setConfig('balance_manage_channel_id', balance_manage_channel_id);
     if (balance_leaderboard_channel_id !== undefined) db.setConfig('balance_leaderboard_channel_id', balance_leaderboard_channel_id);
+    if (pricing_channel_id !== undefined) db.setConfig('pricing_channel_id', pricing_channel_id);
     if (loyalty_earn_rate !== undefined) db.setConfig('loyalty_earn_rate', loyalty_earn_rate);
     if (loyalty_redeem_rate !== undefined) db.setConfig('loyalty_redeem_rate', loyalty_redeem_rate);
     if (shop_theme_color !== undefined) db.setConfig('shop_theme_color', shop_theme_color);
@@ -179,6 +181,7 @@ app.post('/api/settings', ensureAuthAPI, (req, res) => {
             { name: 'Backup Channel', value: backup_channel_id ? `\` ${backup_channel_id} \`` : 'N/A', inline: true },
             { name: 'Balance Manage Channel', value: balance_manage_channel_id ? `\` ${balance_manage_channel_id} \`` : 'N/A', inline: true },
             { name: 'Leaderboard Channel', value: balance_leaderboard_channel_id ? `\` ${balance_leaderboard_channel_id} \`` : 'N/A', inline: true },
+            { name: 'Pricing Channel', value: pricing_channel_id ? `\` ${pricing_channel_id} \`` : 'N/A', inline: true },
             { name: 'Loyalty Earn Rate', value: loyalty_earn_rate ? `\` ${loyalty_earn_rate} NPR spent = 1 pt \`` : 'N/A', inline: true },
             { name: 'Loyalty Redeem Rate', value: loyalty_redeem_rate ? `\` ${loyalty_redeem_rate} pts = 1 NPR \`` : 'N/A', inline: true },
             { name: 'Theme Color', value: shop_theme_color ? `\` ${shop_theme_color} \`` : 'N/A', inline: true }
@@ -238,9 +241,11 @@ app.get('/api/products', ensureAuthAPI, async (req, res) => {
                 is_local: true,
                 infinite_stock: lp.infinite_stock || false,
                 hidden: lp.hidden || false,
+                validity: lp.validity || '1 Month',
                 custom: {
                     name: lp.name,
-                    price: lp.price
+                    price: lp.price,
+                    validity: lp.validity || '1 Month'
                 }
             });
         });
@@ -265,18 +270,18 @@ app.get('/api/products', ensureAuthAPI, async (req, res) => {
 
 // Local product endpoints
 app.post('/api/products/local', ensureAuthAPI, (req, res) => {
-    const { name, description, price, stockLines, infinite_stock } = req.body;
+    const { name, description, price, stockLines, infinite_stock, validity } = req.body;
     if (!name || !price) return res.status(400).json({ error: 'Name and price are required' });
-    const product = db.addLocalProduct(name, description, price, stockLines, infinite_stock);
+    const product = db.addLocalProduct(name, description, price, stockLines, infinite_stock, validity);
     db.appendLog({ action: 'local_product_create', product_id: product.id, name });
     res.json({ success: true, product });
 });
 
 app.post('/api/products/local/:id', ensureAuthAPI, (req, res) => {
     const id = req.params.id;
-    const { name, description, price, hidden, stock, addStockLines, infinite_stock } = req.body;
+    const { name, description, price, hidden, stock, addStockLines, infinite_stock, validity } = req.body;
     try {
-        const product = db.updateLocalProduct(id, { name, description, price, hidden, stock, addStockLines, infinite_stock });
+        const product = db.updateLocalProduct(id, { name, description, price, hidden, stock, addStockLines, infinite_stock, validity });
         db.appendLog({ action: 'local_product_update', product_id: id, name });
         res.json({ success: true, product });
     } catch (err) {
@@ -346,17 +351,18 @@ app.post('/api/clean-sessions', ensureAuthAPI, (req, res) => {
 });
 
 app.post('/api/product', ensureAuthAPI, (req, res) => {
-    const { product_id, name, description, price, hidden } = req.body;
+    const { product_id, name, description, price, hidden, validity } = req.body;
     if (!product_id) return res.status(400).json({ error: 'Missing product_id' });
     
     let customProducts = db.getConfig('custom_products') || {};
     let hiddenProducts = db.getConfig('hidden_products') || [];
     
-    if (name || description || price) {
+    if (name || description || price || validity) {
         customProducts[String(product_id)] = {
             name: name || undefined,
             description: description || undefined,
-            price: price || undefined
+            price: price || undefined,
+            validity: validity || undefined
         };
     } else {
         delete customProducts[String(product_id)];

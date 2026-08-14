@@ -104,19 +104,22 @@ function sortProducts(products) {
 }
 
 function getProductData(product) {
-    if (product.is_local) {
-        return {
-            name: product.name,
-            description: product.description || 'No description.',
-            price: ((product.price_usdt || 0) * (db.getConfig('usdt_to_npr_rate') || 250)).toFixed(2)
-        };
-    }
     const customProducts = db.getConfig('custom_products') || {};
     const custom = customProducts[product.id] || customProducts[String(product.id)] || {};
+    
+    if (product.is_local) {
+        return {
+            name: custom.name || product.name,
+            description: custom.description || product.description || 'No description.',
+            price: custom.price || ((product.price_usdt || 0) * (db.getConfig('usdt_to_npr_rate') || 250)).toFixed(2),
+            validity: custom.validity || product.validity || '1 Month'
+        };
+    }
     return {
         name: custom.name || product.name,
         description: custom.description || product.description || 'No description.',
-        price: custom.price || ((product.price_usdt || 0) * (db.getConfig('usdt_to_npr_rate') || 250)).toFixed(2)
+        price: custom.price || ((product.price_usdt || 0) * (db.getConfig('usdt_to_npr_rate') || 250)).toFixed(2),
+        validity: custom.validity || product.validity || '1 Month'
     };
 }
 
@@ -134,6 +137,7 @@ async function getMergedProducts() {
             stock: p.infinite_stock ? 9999 : (p.stock ? p.stock.length : 0),
             infinite_stock: !!p.infinite_stock,
             hidden: !!p.hidden,
+            validity: p.validity || '1 Month',
             is_local: true
         }));
         
@@ -232,6 +236,72 @@ async function updateAvailableProductsChannel() {
         }
     } catch (e) {
         log.error({ err: e.message }, 'Global catalog update error');
+    }
+}
+
+async function updatePricingChannel() {
+    try {
+        const channelId = db.getConfig('pricing_channel_id');
+        if (!channelId) return;
+        const channel = await client.channels.fetch(channelId).catch(() => null);
+        if (!channel) return;
+
+        const allProducts = await getMergedProducts();
+        const hiddenProducts = db.getConfig('hidden_products') || [];
+        
+        let products = allProducts.filter(p => !p.hidden && !hiddenProducts.includes(String(p.id)));
+        products = sortProducts(products);
+
+        const themeColorHex = db.getConfig('shop_theme_color') || '#8b5cf6';
+        const colorInt = parseInt(themeColorHex.replace('#', ''), 16) || 0x8b5cf6;
+
+        let descriptionText = `🏷️ **IdeaClick Official Product Pricing & Validity Guide**\n\n`;
+        if (products.length === 0) {
+            descriptionText += `📭 *No products currently available.*`;
+        } else {
+            products.forEach(product => {
+                const pData = getProductData(product);
+                const emoji = getProductEmoji(pData.name);
+                let stockText = '🔴 Out of Stock';
+                if (product.infinite_stock) {
+                    stockText = '🟢 In Stock (Unlimited)';
+                } else if ((product.stock ?? 0) > 0) {
+                    stockText = `🟢 In Stock (${product.stock} left)`;
+                }
+
+                descriptionText += `${emoji} **${pData.name}**\n⏳ Validity: **${pData.validity}** | 💰 Price: **Rs. ${pData.price}**\n⚡ Status: ${stockText}\n\n`;
+            });
+        }
+
+        const embed = new EmbedBuilder()
+            .setTitle('🏷️ Official Product Pricing & Validity Guide')
+            .setDescription(descriptionText)
+            .setColor(colorInt)
+            .setFooter({ text: 'IdeaClick Store • All Prices in Rs.' })
+            .setTimestamp();
+
+        let botMessage = null;
+        try {
+            const messages = await channel.messages.fetch({ limit: 50 });
+            botMessage = messages.find(m => m.author.id === client.user.id);
+        } catch (fetchErr) {
+            log.warn({ err: fetchErr.message }, 'Failed to fetch messages in pricing channel.');
+        }
+
+        try {
+            if (botMessage) {
+                await botMessage.edit({ embeds: [embed], components: [] }).catch(async (editErr) => {
+                    await channel.send({ embeds: [embed] });
+                });
+            } else {
+                await channel.send({ embeds: [embed] });
+            }
+            log.info('Pricing channel updated successfully.');
+        } catch (sendErr) {
+            log.error({ err: sendErr.message }, 'Failed to send or edit message in pricing channel.');
+        }
+    } catch (e) {
+        log.error({ err: e.message }, 'Global pricing update error');
     }
 }
 
@@ -395,6 +465,7 @@ async function trackStockChanges() {
         if (updated) {
             db.setConfig('last_known_stock', lastKnownStock);
             await updateAvailableProductsChannel();
+            await updatePricingChannel();
         }
     } catch (error) { log.error({ err: error.message }, 'Stock tracker error'); }
 }
@@ -403,6 +474,7 @@ client.once('clientReady', async () => {
     log.info({ user: client.user.tag }, 'Bot logged in');
     await trackStockChanges();
     await updateAvailableProductsChannel();
+    await updatePricingChannel();
     await updateLeaderboardChannel();
     setInterval(trackStockChanges, 1 * 60 * 1000); 
     setInterval(updateLeaderboardChannel, 5 * 60 * 1000);
@@ -418,6 +490,7 @@ client.once('clientReady', async () => {
             watchTimeout = setTimeout(async () => {
                 log.info('Detected configuration change on disk, syncing live catalog & leaderboard channels...');
                 await updateAvailableProductsChannel().catch(() => null);
+                await updatePricingChannel().catch(() => null);
                 await updateLeaderboardChannel().catch(() => null);
             }, 1500);
         }
@@ -995,6 +1068,15 @@ Buttons below allow you to:
             await interaction.reply({ embeds: [embed], ...ephemeral });
         }
 
+        if (interaction.isChatInputCommand() && interaction.commandName === 'pin-pricing') {
+            if (!interaction.member.permissions.has('Administrator')) {
+                return await interaction.reply({ content: '❌ Admins only.', ...ephemeral });
+            }
+            db.setConfig('pricing_channel_id', interaction.channel.id);
+            await updatePricingChannel();
+            await interaction.reply({ content: '✅ Live Pricing & Validity guide pinned to this channel!', ...ephemeral });
+        }
+
         if (interaction.isChatInputCommand() && interaction.commandName === 'pin-mod-panel') {
             if (!interaction.member.permissions.has('Administrator')) {
                 return await interaction.reply({ content: '❌ Admins only.', ...ephemeral });
@@ -1143,8 +1225,9 @@ Use the interactive buttons below to manage shop inventory, user accounts, and a
                 .setCustomId('mod_modal_add_product')
                 .setTitle('➕ Add New Product')
                 .addComponents(
-                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('name').setLabel('Product Name').setStyle(TextInputStyle.Short).setPlaceholder('e.g., Netflix Premium 1 Month').setRequired(true)),
-                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('price').setLabel('Price in NPR').setStyle(TextInputStyle.Short).setPlaceholder('e.g., 350').setRequired(true)),
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('name').setLabel('Product Name').setStyle(TextInputStyle.Short).setPlaceholder('e.g., Capcut Pro Team').setRequired(true)),
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('price').setLabel('Price in NPR / Rs.').setStyle(TextInputStyle.Short).setPlaceholder('e.g., 500').setRequired(true)),
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('validity').setLabel('Validity Period').setStyle(TextInputStyle.Short).setPlaceholder('e.g., 1 Month, 18 Months, 7 Days').setValue('1 Month').setRequired(true)),
                     new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('description').setLabel('Description').setStyle(TextInputStyle.Paragraph).setPlaceholder('Product features & warranty details...').setRequired(false)),
                     new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('stock').setLabel('Initial Stock Keys (One per line)').setStyle(TextInputStyle.Paragraph).setPlaceholder('user:pass or license key 1\nuser:pass or license key 2').setRequired(false))
                 );
@@ -1262,15 +1345,16 @@ Use the interactive buttons below to manage shop inventory, user accounts, and a
             if (!interaction.member.permissions.has('Administrator')) return await interaction.reply({ content: '❌ Admins only.', ...ephemeral });
             const name = interaction.fields.getTextInputValue('name');
             const price = parseFloat(interaction.fields.getTextInputValue('price'));
+            const validity = interaction.fields.getTextInputValue('validity') || '1 Month';
             const description = interaction.fields.getTextInputValue('description') || '';
             const rawStock = interaction.fields.getTextInputValue('stock') || '';
 
             if (!name || isNaN(price) || price <= 0) return await interaction.reply({ content: '❌ Invalid name or price.', ...ephemeral });
 
             const stockLines = rawStock.split('\n').map(s => s.trim()).filter(Boolean);
-            const product = db.addLocalProduct(name, description, price, stockLines);
+            const product = db.addLocalProduct(name, description, price, stockLines, false, validity);
 
-            db.appendLog({ action: 'mod_product_create', adminId: interaction.user.id, adminTag: interaction.user.tag, product_id: product.id, name, price });
+            db.appendLog({ action: 'mod_product_create', adminId: interaction.user.id, adminTag: interaction.user.tag, product_id: product.id, name, price, validity });
 
             await sendStaffLog(
                 new EmbedBuilder()
@@ -1279,19 +1363,22 @@ Use the interactive buttons below to manage shop inventory, user accounts, and a
                     .addFields(
                         { name: 'Admin', value: `${interaction.user.tag} (\`${interaction.user.id}\`)`, inline: true },
                         { name: 'Product Name', value: name, inline: true },
-                        { name: 'Price', value: `${price} NPR`, inline: true },
+                        { name: 'Price', value: `Rs. ${price}`, inline: true },
+                        { name: 'Validity Period', value: validity, inline: true },
                         { name: 'Initial Stock Count', value: `\` ${stockLines.length} items \``, inline: true }
                     )
                     .setTimestamp()
             );
 
             await updateAvailableProductsChannel();
+            await updatePricingChannel();
 
             const successEmbed = new EmbedBuilder()
                 .setTitle('✅ Product Successfully Created!')
                 .setDescription(`**${name}** has been added to the store catalog.`)
                 .addFields(
-                    { name: '💵 Price', value: `\` ${price} NPR \``, inline: true },
+                    { name: '💵 Price', value: `\` Rs. ${price} \``, inline: true },
+                    { name: '⏳ Validity', value: `\` ${validity} \``, inline: true },
                     { name: '📦 Initial Stock', value: `\` ${stockLines.length} \``, inline: true }
                 )
                 .setColor(0x2ecc71);

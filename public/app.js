@@ -196,6 +196,7 @@ function initModals() {
             const name = document.getElementById('local-modal-name').value.trim();
             const desc = document.getElementById('local-modal-desc').value.trim();
             const price = parseFloat(document.getElementById('local-modal-price').value);
+            const validity = document.getElementById('local-modal-validity').value.trim() || '1 Month';
             const stockVal = document.getElementById('local-modal-stock').value;
             const stockLines = stockVal.split('\n').map(l => l.trim()).filter(Boolean);
             const infiniteVal = document.getElementById('local-modal-infinite').checked;
@@ -209,7 +210,7 @@ function initModals() {
                 const res = await fetch('/api/products/local', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ name, description: desc, price, stockLines, infinite_stock: infiniteVal })
+                    body: JSON.stringify({ name, description: desc, price, stockLines, infinite_stock: infiniteVal, validity })
                 });
                 if (!res.ok) throw new Error('Failed to create local product');
                 showToast('Local product created successfully', 'success');
@@ -396,6 +397,7 @@ async function loadSettings() {
             const liveSalesInput = document.getElementById('setting-live-sales');
             const availableProductsInput = document.getElementById('setting-available-products');
             const backupChannelInput = document.getElementById('setting-backup-channel');
+            const pricingChannelInput = document.getElementById('setting-pricing-channel');
             const earnInput = document.getElementById('setting-loyalty-earn');
             const redeemInput = document.getElementById('setting-loyalty-redeem');
             const themeColorInput = document.getElementById('setting-theme-color');
@@ -408,6 +410,7 @@ async function loadSettings() {
             if (liveSalesInput) liveSalesInput.value = settings.live_sales_channel_id || '';
             if (availableProductsInput) availableProductsInput.value = settings.available_products_channel_id || '';
             if (backupChannelInput) backupChannelInput.value = settings.backup_channel_id || '';
+            if (pricingChannelInput) pricingChannelInput.value = settings.pricing_channel_id || '';
             if (earnInput) earnInput.value = settings.loyalty_earn_rate || '';
             if (redeemInput) redeemInput.value = settings.loyalty_redeem_rate || '';
             
@@ -443,6 +446,7 @@ async function loadSettings() {
             const liveSalesId = document.getElementById('setting-live-sales').value;
             const availableProductsId = document.getElementById('setting-available-products').value;
             const backupChannelId = document.getElementById('setting-backup-channel').value;
+            const pricingChannelId = document.getElementById('setting-pricing-channel').value;
             const earnRate = parseInt(document.getElementById('setting-loyalty-earn').value);
             const redeemRate = parseInt(document.getElementById('setting-loyalty-redeem').value);
             const themeColor = document.getElementById('setting-theme-color').value;
@@ -460,6 +464,7 @@ async function loadSettings() {
                         live_sales_channel_id: liveSalesId,
                         available_products_channel_id: availableProductsId,
                         backup_channel_id: backupChannelId,
+                        pricing_channel_id: pricingChannelId,
                         loyalty_earn_rate: isNaN(earnRate) ? null : earnRate,
                         loyalty_redeem_rate: isNaN(redeemRate) ? null : redeemRate,
                         shop_theme_color: themeColor,
@@ -534,6 +539,7 @@ async function loadProducts() {
             const custom = p.custom || {};
             const isHidden = p.hidden === true;
             const displayName = custom.name || p.name || 'Unnamed';
+            const validityVal = custom.validity || p.validity || '1 Month';
             card.setAttribute('data-name', displayName.toLowerCase());
             const isLocal = p.is_local === true;
             const isInfinite = p.infinite_stock === true;
@@ -544,6 +550,7 @@ async function loadProducts() {
                     ? '<span class="badge in-stock">In Stock (' + stockCount + ')</span>'
                     : '<span class="badge out-of-stock">Out of Stock</span>');
             const hiddenBadge = isHidden ? '<span class="badge hidden">Hidden</span>' : '<span class="badge visible">Visible</span>';
+            const validityBadge = `<span class="badge" style="background-color:rgba(139, 92, 246, 0.15); color:#8b5cf6; border-color:rgba(139, 92, 246, 0.3);">⏳ ${validityVal}</span>`;
 
             let stockHtml = '';
             if (isLocal) {
@@ -574,6 +581,7 @@ async function loadProducts() {
                     <div style="display:flex; flex-direction:column; align-items:flex-end; gap:6px;">
                         <div style="display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end;">
                             ${stockBadge}
+                            ${validityBadge}
                             ${hiddenBadge}
                         </div>
                         <div style="display:flex; gap:4px;">
@@ -596,6 +604,11 @@ async function loadProducts() {
                 <div class="form-group mt-3">
                     <label>${isLocal ? 'Price (NPR)' : 'Custom Price (NPR)'}</label>
                     <input type="number" class="input-field prod-price" value="${isLocal ? (custom.price || '') : (custom.price || '')}" step="0.01" placeholder="${isLocal ? 'Price in NPR' : 'Auto from USDT'}">
+                </div>
+
+                <div class="form-group mt-3">
+                    <label>Validity Period (e.g. 1 Month, 18 Months, 7 Days)</label>
+                    <input type="text" class="input-field prod-validity" value="${validityVal}" placeholder="e.g. 1 Month, 18 Months">
                 </div>
 
                 ${stockHtml}
@@ -633,6 +646,7 @@ async function loadProducts() {
                 const nameVal = card.querySelector('.prod-name').value.trim();
                 const descVal = card.querySelector('.prod-desc').value.trim();
                 const priceVal = card.querySelector('.prod-price').value;
+                const validityValInput = card.querySelector('.prod-validity').value.trim();
                 const hiddenVal = card.querySelector('.prod-hidden').checked;
 
                 if (p.is_local) {
@@ -644,6 +658,7 @@ async function loadProducts() {
                         name: nameVal || p.name,
                         description: descVal || p.description,
                         price: priceVal ? parseFloat(priceVal) : p.price,
+                        validity: validityValInput || '1 Month',
                         hidden: hiddenVal,
                         addStockLines: stockLines,
                         infinite_stock: infiniteVal
@@ -667,6 +682,7 @@ async function loadProducts() {
                         name: nameVal || null,
                         description: descVal || null,
                         price: priceVal ? parseFloat(priceVal) : null,
+                        validity: validityValInput || null,
                         hidden: hiddenVal
                     };
 

@@ -103,24 +103,52 @@ function sortProducts(products) {
     return products;
 }
 
+function autoDetectValidity(name = '', description = '') {
+    const text = `${name} ${description}`.trim();
+    
+    const monthMatch = text.match(/\b(\d+)\s*(?:M|m|month|months|Months|Month)\b/);
+    if (monthMatch) {
+        const num = parseInt(monthMatch[1], 10);
+        return `${num} ${num === 1 ? 'Month' : 'Months'}`;
+    }
+
+    const dayMatch = text.match(/\b(\d+)\s*(?:D|d|day|days|Days|Day)\b/);
+    if (dayMatch) {
+        const num = parseInt(dayMatch[1], 10);
+        return `${num} ${num === 1 ? 'Day' : 'Days'}`;
+    }
+
+    const yearMatch = text.match(/\b(\d+)\s*(?:Y|y|year|years|Years|Year)\b/);
+    if (yearMatch) {
+        const num = parseInt(yearMatch[1], 10);
+        return `${num} ${num === 1 ? 'Year' : 'Years'}`;
+    }
+
+    return '1 Month';
+}
+
+function resolveValidity(product, customValidity) {
+    if (customValidity && customValidity.trim() && customValidity !== '1 Month') {
+        return customValidity.trim();
+    }
+    const name = (product && product.name) || '';
+    const desc = (product && product.description) || '';
+    const detected = autoDetectValidity(name, desc);
+    if (detected !== '1 Month') {
+        return detected;
+    }
+    return customValidity && customValidity.trim() ? customValidity.trim() : '1 Month';
+}
+
 function getProductData(product) {
     const customProducts = db.getConfig('custom_products') || {};
     const custom = customProducts[product.id] || customProducts[String(product.id)] || {};
+    const name = custom.name || product.name;
+    const description = custom.description || product.description || 'No description.';
+    const price = custom.price || ((product.price_usdt || 0) * (db.getConfig('usdt_to_npr_rate') || 250)).toFixed(2);
+    const validity = resolveValidity({ name, description }, custom.validity || product.validity);
     
-    if (product.is_local) {
-        return {
-            name: custom.name || product.name,
-            description: custom.description || product.description || 'No description.',
-            price: custom.price || ((product.price_usdt || 0) * (db.getConfig('usdt_to_npr_rate') || 250)).toFixed(2),
-            validity: custom.validity || product.validity || '1 Month'
-        };
-    }
-    return {
-        name: custom.name || product.name,
-        description: custom.description || product.description || 'No description.',
-        price: custom.price || ((product.price_usdt || 0) * (db.getConfig('usdt_to_npr_rate') || 250)).toFixed(2),
-        validity: custom.validity || product.validity || '1 Month'
-    };
+    return { name, description, price, validity };
 }
 
 async function getMergedProducts() {
@@ -172,6 +200,8 @@ function getProductEmoji(name) {
     else if (lower.includes('grok')) emojiName = 'Grok';
     else if (lower.includes('canva')) emojiName = 'Canva';
     else if (lower.includes('netflix')) emojiName = 'Netflix';
+    else if (lower.includes('coursera')) emojiName = 'coursera';
+    else if (lower.includes('claude')) emojiName = 'ClaudeIcon';
     else if (lower.includes('api')) emojiName = 'ActiveDeveloper';
     else return '🔹';
 

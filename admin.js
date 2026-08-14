@@ -198,6 +198,43 @@ app.post('/api/backup', ensureAuthAPI, (req, res) => {
     res.json({ success: true, message: 'Database backup request triggered successfully!' });
 });
 
+function autoDetectValidity(name = '', description = '') {
+    const text = `${name} ${description}`.trim();
+    
+    const monthMatch = text.match(/\b(\d+)\s*(?:M|m|month|months|Months|Month)\b/);
+    if (monthMatch) {
+        const num = parseInt(monthMatch[1], 10);
+        return `${num} ${num === 1 ? 'Month' : 'Months'}`;
+    }
+
+    const dayMatch = text.match(/\b(\d+)\s*(?:D|d|day|days|Days|Day)\b/);
+    if (dayMatch) {
+        const num = parseInt(dayMatch[1], 10);
+        return `${num} ${num === 1 ? 'Day' : 'Days'}`;
+    }
+
+    const yearMatch = text.match(/\b(\d+)\s*(?:Y|y|year|years|Years|Year)\b/);
+    if (yearMatch) {
+        const num = parseInt(yearMatch[1], 10);
+        return `${num} ${num === 1 ? 'Year' : 'Years'}`;
+    }
+
+    return '1 Month';
+}
+
+function resolveValidity(product, customValidity) {
+    if (customValidity && customValidity.trim() && customValidity !== '1 Month') {
+        return customValidity.trim();
+    }
+    const name = (product && product.name) || '';
+    const desc = (product && product.description) || '';
+    const detected = autoDetectValidity(name, desc);
+    if (detected !== '1 Month') {
+        return detected;
+    }
+    return customValidity && customValidity.trim() ? customValidity.trim() : '1 Month';
+}
+
 app.get('/api/products', ensureAuthAPI, async (req, res) => {
     try {
         let products = [];
@@ -221,9 +258,14 @@ app.get('/api/products', ensureAuthAPI, async (req, res) => {
         const productOrder = db.getConfig('product_order') || [];
         
         let enriched = products.map(p => {
+            const cust = customProducts[String(p.id)] || {};
+            const displayName = cust.name || p.name;
+            const displayDesc = cust.description || p.description || '';
+            const valid = resolveValidity({ name: displayName, description: displayDesc }, cust.validity || p.validity);
             return {
                 ...p,
-                custom: customProducts[String(p.id)] || {},
+                validity: valid,
+                custom: cust,
                 hidden: hiddenProducts.includes(String(p.id))
             };
         });
@@ -231,6 +273,8 @@ app.get('/api/products', ensureAuthAPI, async (req, res) => {
         // Merge local products
         const localProducts = db.getLocalProducts();
         localProducts.forEach(lp => {
+            const cust = { name: lp.name, price: lp.price, validity: lp.validity };
+            const valid = resolveValidity({ name: lp.name, description: lp.description || '' }, lp.validity);
             enriched.push({
                 id: lp.id,
                 name: lp.name,
@@ -241,11 +285,11 @@ app.get('/api/products', ensureAuthAPI, async (req, res) => {
                 is_local: true,
                 infinite_stock: lp.infinite_stock || false,
                 hidden: lp.hidden || false,
-                validity: lp.validity || '1 Month',
+                validity: valid,
                 custom: {
                     name: lp.name,
                     price: lp.price,
-                    validity: lp.validity || '1 Month'
+                    validity: valid
                 }
             });
         });

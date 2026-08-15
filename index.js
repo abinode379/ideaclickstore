@@ -555,12 +555,12 @@ function getShopMainMenuEmbed(interaction) {
 function getNavRow(excludeButton) {
     const row = new ActionRowBuilder();
     const buttons = [
+        { id: 'nav_back', label: '🏠 Home', style: ButtonStyle.Danger },
         { id: 'nav_shop', label: '🛒 Shop', style: ButtonStyle.Primary },
         { id: 'nav_balance', label: '💰 Balance', style: ButtonStyle.Success },
         { id: 'nav_deposit', label: '📥 Deposit', style: ButtonStyle.Secondary },
         { id: 'nav_history', label: '📜 History', style: ButtonStyle.Secondary },
-        { id: 'redeem', label: '🏆 Redeem', style: ButtonStyle.Secondary },
-        { id: 'nav_back', label: '🔙 Back', style: ButtonStyle.Danger }
+        { id: 'redeem', label: '🏆 Redeem', style: ButtonStyle.Secondary }
     ];
     let count = 0;
     buttons.forEach(btn => {
@@ -1529,7 +1529,7 @@ Use the interactive buttons below to manage shop inventory, user accounts, and a
                         .setTimestamp()
                 );
                 
-                await interaction.update({ embeds: [embed], components: [getNavRow('back')] });
+                await interaction.update({ embeds: [embed], components: [getNavRow('daily')] });
             } catch (error) {
                 let msg = error.message;
                 if (msg.startsWith('Next claim time: ')) {
@@ -1543,7 +1543,7 @@ Use the interactive buttons below to manage shop inventory, user accounts, and a
                     .setTitle('⏰ Daily Reward')
                     .setDescription(`❌ ${msg}`)
                     .setColor(0xe74c3c);
-                await interaction.update({ embeds: [errEmbed], components: [getNavRow('back')] });
+                await interaction.update({ embeds: [errEmbed], components: [getNavRow('daily')] });
             }
         }
 
@@ -1608,7 +1608,8 @@ Use the interactive buttons below to manage shop inventory, user accounts, and a
             const row = new ActionRowBuilder().addComponents(
                 new ButtonBuilder().setCustomId(`buy1_${product.id}`).setLabel('🛒 Buy 1 Unit').setStyle(ButtonStyle.Success).setDisabled((product.stock ?? 0) === 0 && !product.infinite_stock),
                 new ButtonBuilder().setCustomId(`buy_${product.id}`).setLabel('🛍️ Buy Multiple').setStyle(ButtonStyle.Primary).setDisabled((product.stock ?? 0) === 0 && !product.infinite_stock),
-                new ButtonBuilder().setCustomId('nav_shop').setLabel('🔙 Back').setStyle(ButtonStyle.Secondary)
+                new ButtonBuilder().setCustomId('nav_shop').setLabel('🛒 Shop').setStyle(ButtonStyle.Secondary),
+                new ButtonBuilder().setCustomId('nav_back').setLabel('🏠 Home').setStyle(ButtonStyle.Danger)
             );
             await interaction.update({ embeds: [embed], components: [row] });
         }
@@ -1649,7 +1650,8 @@ Use the interactive buttons below to manage shop inventory, user accounts, and a
                     const row = new ActionRowBuilder().addComponents(
                         new ButtonBuilder().setLabel(`Pay ${missingAmount} NPR`).setURL(session.data.checkout_url).setStyle(ButtonStyle.Link),
                         new ButtonBuilder().setCustomId(`check_buy_${product.id}_1_${user.balance_npr}`).setLabel('🔄 Check Status').setStyle(ButtonStyle.Primary),
-                        new ButtonBuilder().setCustomId('nav_shop').setLabel('🔙 Back').setStyle(ButtonStyle.Secondary)
+                        new ButtonBuilder().setCustomId('nav_shop').setLabel('🛒 Shop').setStyle(ButtonStyle.Secondary),
+                        new ButtonBuilder().setCustomId('nav_back').setLabel('🏠 Home').setStyle(ButtonStyle.Danger)
                     );
                     
                     return await interaction.editReply({ embeds: [embed], components: [row] });
@@ -1673,7 +1675,8 @@ Use the interactive buttons below to manage shop inventory, user accounts, and a
                     
                 const row = new ActionRowBuilder().addComponents(
                     new ButtonBuilder().setCustomId(`confirmbuy_${productId}_1`).setLabel('✅ Confirm Order').setStyle(ButtonStyle.Success),
-                    new ButtonBuilder().setCustomId('nav_shop').setLabel('❌ Cancel').setStyle(ButtonStyle.Danger)
+                    new ButtonBuilder().setCustomId('nav_shop').setLabel('🛒 Shop').setStyle(ButtonStyle.Secondary),
+                    new ButtonBuilder().setCustomId('nav_back').setLabel('🏠 Home').setStyle(ButtonStyle.Danger)
                 );
                 
                 await interaction.editReply({ embeds: [embed], components: [row] });
@@ -1701,7 +1704,8 @@ Use the interactive buttons below to manage shop inventory, user accounts, and a
                     .setTimestamp();
                 
                 const row = new ActionRowBuilder().addComponents(
-                    new ButtonBuilder().setCustomId('nav_back').setLabel('🔙 Back to Main Menu').setStyle(ButtonStyle.Success)
+                    new ButtonBuilder().setCustomId('nav_back').setLabel('🏠 Home').setStyle(ButtonStyle.Danger),
+                    new ButtonBuilder().setCustomId('nav_shop').setLabel('🛒 Shop').setStyle(ButtonStyle.Primary)
                 );
                 await interaction.editReply({ embeds: [embed], components: [row] });
             } else {
@@ -1738,7 +1742,8 @@ Use the interactive buttons below to manage shop inventory, user accounts, and a
                     .setTimestamp();
                 
                 const row = new ActionRowBuilder().addComponents(
-                    new ButtonBuilder().setCustomId('nav_shop').setLabel('🔙 Back to Shop').setStyle(ButtonStyle.Success)
+                    new ButtonBuilder().setCustomId('nav_back').setLabel('🏠 Home').setStyle(ButtonStyle.Danger),
+                    new ButtonBuilder().setCustomId('nav_shop').setLabel('🛒 Shop').setStyle(ButtonStyle.Primary)
                 );
                 await interaction.editReply({ embeds: [embed], components: [row] });
             } else if (user.balance_npr !== initialBalance) {
@@ -1749,7 +1754,8 @@ Use the interactive buttons below to manage shop inventory, user accounts, and a
                     .setTimestamp();
                 
                 const row = new ActionRowBuilder().addComponents(
-                    new ButtonBuilder().setCustomId('nav_shop').setLabel('🔙 Go to Shop').setStyle(ButtonStyle.Success)
+                    new ButtonBuilder().setCustomId('nav_back').setLabel('🏠 Home').setStyle(ButtonStyle.Danger),
+                    new ButtonBuilder().setCustomId('nav_shop').setLabel('🛒 Shop').setStyle(ButtonStyle.Primary)
                 );
                 await interaction.editReply({ embeds: [embed], components: [row] });
             } else {
@@ -1942,7 +1948,7 @@ Use the interactive buttons below to manage shop inventory, user accounts, and a
                 
                 await interaction.editReply({ embeds: [embed], components: [row] });
             } catch (error) {
-                await interaction.editReply({ content: `❌ ${error.message}`, components: [getNavRow('categories')] });
+                await interaction.editReply({ content: `❌ ${error.message}`, components: [getNavRow('shop')] });
             }
         }
 
@@ -1995,7 +2001,10 @@ Use the interactive buttons below to manage shop inventory, user accounts, and a
                     new ButtonBuilder().setLabel('💳 Pay').setURL(session.data.checkout_url).setStyle(ButtonStyle.Link),
                     new ButtonBuilder().setCustomId(`check_dep_${amount}_${user.balance_npr}`).setLabel('🔄 Check Status').setStyle(ButtonStyle.Primary)
                 );
-                const backRow = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('nav_back').setLabel('🔙 Back to Main Menu').setStyle(ButtonStyle.Danger));
+                const backRow = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder().setCustomId('nav_back').setLabel('🏠 Home').setStyle(ButtonStyle.Danger),
+                    new ButtonBuilder().setCustomId('nav_shop').setLabel('🛒 Shop').setStyle(ButtonStyle.Secondary)
+                );
                 await interaction.editReply({ embeds: [embed], components: [payRow, backRow] });
             } catch (error) { await interaction.editReply({ content: '❌ Deposit failed' }); }
         }

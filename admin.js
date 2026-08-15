@@ -155,11 +155,31 @@ app.post('/api/settings', ensureAuthAPI, (req, res) => {
     if (usdt_to_npr_rate !== undefined) db.setConfig('usdt_to_npr_rate', usdt_to_npr_rate);
     if (notification_channel_id !== undefined) db.setConfig('notification_channel_id', notification_channel_id);
     if (live_sales_channel_id !== undefined) db.setConfig('live_sales_channel_id', live_sales_channel_id);
-    if (available_products_channel_id !== undefined) db.setConfig('available_products_channel_id', available_products_channel_id);
+    if (available_products_channel_id !== undefined) {
+        if (db.getConfig('available_products_channel_id') !== available_products_channel_id) {
+            db.setConfig('available_products_message_id', null);
+        }
+        db.setConfig('available_products_channel_id', available_products_channel_id);
+    }
     if (backup_channel_id !== undefined) db.setConfig('backup_channel_id', backup_channel_id);
-    if (balance_manage_channel_id !== undefined) db.setConfig('balance_manage_channel_id', balance_manage_channel_id);
-    if (balance_leaderboard_channel_id !== undefined) db.setConfig('balance_leaderboard_channel_id', balance_leaderboard_channel_id);
-    if (pricing_channel_id !== undefined) db.setConfig('pricing_channel_id', pricing_channel_id);
+    if (balance_manage_channel_id !== undefined) {
+        if (db.getConfig('balance_manage_channel_id') !== balance_manage_channel_id) {
+            db.setConfig('balance_manage_message_id', null);
+        }
+        db.setConfig('balance_manage_channel_id', balance_manage_channel_id);
+    }
+    if (balance_leaderboard_channel_id !== undefined) {
+        if (db.getConfig('balance_leaderboard_channel_id') !== balance_leaderboard_channel_id) {
+            db.setConfig('leaderboard_message_id', null);
+        }
+        db.setConfig('balance_leaderboard_channel_id', balance_leaderboard_channel_id);
+    }
+    if (pricing_channel_id !== undefined) {
+        if (db.getConfig('pricing_channel_id') !== pricing_channel_id) {
+            db.setConfig('pricing_message_id', null);
+        }
+        db.setConfig('pricing_channel_id', pricing_channel_id);
+    }
     if (loyalty_earn_rate !== undefined) db.setConfig('loyalty_earn_rate', loyalty_earn_rate);
     if (loyalty_redeem_rate !== undefined) db.setConfig('loyalty_redeem_rate', loyalty_redeem_rate);
     if (shop_theme_color !== undefined) db.setConfig('shop_theme_color', shop_theme_color);

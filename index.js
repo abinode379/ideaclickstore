@@ -243,26 +243,24 @@ async function updateAvailableProductsChannel() {
             .setColor(0x8b5cf6)
             .setTimestamp();
 
+        const messageId = db.getConfig('available_products_message_id');
         let botMessage = null;
-        try {
-            const messages = await channel.messages.fetch({ limit: 50 });
-            botMessage = messages.find(m => m.author.id === client.user.id);
-        } catch (fetchErr) {
-            log.warn({ err: fetchErr.message }, 'Failed to fetch messages in live catalog channel (Read Message History permission may be missing).');
+        if (messageId) {
+            botMessage = await channel.messages.fetch(messageId).catch(() => null);
         }
 
         try {
             if (botMessage) {
-                await botMessage.edit({ embeds: [embed], components: [] }).catch(async (editErr) => {
-                    log.warn({ err: editErr.message }, 'Failed to edit bot message in live catalog channel, attempting to send a new one.');
-                    await channel.send({ embeds: [embed] });
-                });
+                await botMessage.edit({ embeds: [embed], components: [] });
             } else {
-                await channel.send({ embeds: [embed] });
+                const newMsg = await channel.send({ embeds: [embed] });
+                if (newMsg) db.setConfig('available_products_message_id', newMsg.id);
             }
             log.info('Live catalog channel updated successfully.');
         } catch (sendErr) {
-            log.error({ err: sendErr.message }, 'Failed to send or edit message in live catalog channel. Please ensure the bot has Send Messages and View Channel permissions.');
+            log.error({ err: sendErr.message }, 'Failed to edit message in live catalog channel, re-sending.');
+            const newMsg = await channel.send({ embeds: [embed] }).catch(() => null);
+            if (newMsg) db.setConfig('available_products_message_id', newMsg.id);
         }
     } catch (e) {
         log.error({ err: e.message }, 'Global catalog update error');
@@ -310,25 +308,24 @@ async function updatePricingChannel() {
             .setFooter({ text: 'IdeaClick Store • All Prices in Rs.' })
             .setTimestamp();
 
+        const messageId = db.getConfig('pricing_message_id');
         let botMessage = null;
-        try {
-            const messages = await channel.messages.fetch({ limit: 50 });
-            botMessage = messages.find(m => m.author.id === client.user.id);
-        } catch (fetchErr) {
-            log.warn({ err: fetchErr.message }, 'Failed to fetch messages in pricing channel.');
+        if (messageId) {
+            botMessage = await channel.messages.fetch(messageId).catch(() => null);
         }
 
         try {
             if (botMessage) {
-                await botMessage.edit({ embeds: [embed], components: [] }).catch(async (editErr) => {
-                    await channel.send({ embeds: [embed] });
-                });
+                await botMessage.edit({ embeds: [embed], components: [] });
             } else {
-                await channel.send({ embeds: [embed] });
+                const newMsg = await channel.send({ embeds: [embed] });
+                if (newMsg) db.setConfig('pricing_message_id', newMsg.id);
             }
             log.info('Pricing channel updated successfully.');
         } catch (sendErr) {
-            log.error({ err: sendErr.message }, 'Failed to send or edit message in pricing channel.');
+            log.error({ err: sendErr.message }, 'Failed to edit message in pricing channel, re-sending.');
+            const newMsg = await channel.send({ embeds: [embed] }).catch(() => null);
+            if (newMsg) db.setConfig('pricing_message_id', newMsg.id);
         }
     } catch (e) {
         log.error({ err: e.message }, 'Global pricing update error');
@@ -369,22 +366,25 @@ async function updateLeaderboardChannel() {
                 .setStyle(ButtonStyle.Success)
         );
 
+        const messageId = db.getConfig('leaderboard_message_id');
         let botMessage = null;
-        try {
-            const messages = await channel.messages.fetch({ limit: 50 });
-            botMessage = messages.find(m => m.author.id === client.user.id);
-        } catch (fetchErr) {
-            log.warn({ err: fetchErr.message }, 'Failed to fetch messages in leaderboard channel.');
+        if (messageId) {
+            botMessage = await channel.messages.fetch(messageId).catch(() => null);
         }
 
-        if (botMessage) {
-            await botMessage.edit({ embeds: [embed], components: [row] }).catch(async () => {
-                await channel.send({ embeds: [embed], components: [row] });
-            });
-        } else {
-            await channel.send({ embeds: [embed], components: [row] });
+        try {
+            if (botMessage) {
+                await botMessage.edit({ embeds: [embed], components: [row] });
+            } else {
+                const newMsg = await channel.send({ embeds: [embed], components: [row] });
+                if (newMsg) db.setConfig('leaderboard_message_id', newMsg.id);
+            }
+            log.info('Leaderboard channel updated successfully.');
+        } catch (sendErr) {
+            log.error({ err: sendErr.message }, 'Failed to edit message in leaderboard channel, re-sending.');
+            const newMsg = await channel.send({ embeds: [embed], components: [row] }).catch(() => null);
+            if (newMsg) db.setConfig('leaderboard_message_id', newMsg.id);
         }
-        log.info('Leaderboard channel updated successfully.');
     } catch (e) {
         log.error({ err: e.message }, 'Global leaderboard update error');
     }
@@ -956,13 +956,28 @@ Buttons below allow you to:
                 new ButtonBuilder().setCustomId('admin_btn_search_user').setLabel('🔍 Search User').setStyle(ButtonStyle.Primary)
             );
 
-            await interaction.channel.send({ embeds: [embed], components: [row] });
+            const oldMsgId = db.getConfig('balance_manage_message_id');
+            if (oldMsgId) {
+                try {
+                    const oldMsg = await interaction.channel.messages.fetch(oldMsgId).catch(() => null);
+                    if (oldMsg) await oldMsg.delete().catch(() => null);
+                } catch (e) {}
+            }
+
+            const panelMsg = await interaction.channel.send({ embeds: [embed], components: [row] });
+            if (panelMsg) db.setConfig('balance_manage_message_id', panelMsg.id);
+
             await interaction.reply({ content: '✅ Admin balance control panel posted! This channel is saved as the balance management channel.', ...ephemeral });
         }
 
         if (interaction.isChatInputCommand() && interaction.commandName === 'pin-leaderboard') {
             if (!interaction.member.permissions.has('Administrator')) {
                 return await interaction.reply({ content: '❌ Admins only.', ...ephemeral });
+            }
+
+            const oldChannelId = db.getConfig('balance_leaderboard_channel_id');
+            if (oldChannelId !== interaction.channel.id) {
+                db.setConfig('leaderboard_message_id', null);
             }
 
             db.setConfig('balance_leaderboard_channel_id', interaction.channel.id);
@@ -1102,6 +1117,12 @@ Buttons below allow you to:
             if (!interaction.member.permissions.has('Administrator')) {
                 return await interaction.reply({ content: '❌ Admins only.', ...ephemeral });
             }
+
+            const oldChannelId = db.getConfig('pricing_channel_id');
+            if (oldChannelId !== interaction.channel.id) {
+                db.setConfig('pricing_message_id', null);
+            }
+
             db.setConfig('pricing_channel_id', interaction.channel.id);
             await updatePricingChannel();
             await interaction.reply({ content: '✅ Live Pricing & Validity guide pinned to this channel!', ...ephemeral });

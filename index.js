@@ -206,7 +206,7 @@ function getProductEmoji(name) {
     if (lower.includes('chatgpt') || lower.includes('chat gpt') || lower.includes('gpt')) emojiName = 'ChatGPT';
     else if (lower.includes('capcut')) emojiName = 'Capcut';
     else if (lower.includes('linkedin')) emojiName = 'LinkedIn';
-    else if (lower.includes('gemini')) emojiName = 'gemini~1';
+    else if (lower.includes('gemini')) emojiName = 'gemini';
     else if (lower.includes('grok')) emojiName = 'Grok';
     else if (lower.includes('canva')) emojiName = 'Canva';
     else if (lower.includes('netflix')) emojiName = 'Netflix';

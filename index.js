@@ -190,10 +190,20 @@ async function getMergedProducts() {
     }
 }
 
+function getCustomEmoji(emojiName) {
+    if (!emojiName) return '';
+    const cleanName = emojiName.toLowerCase().replace(/~/g, '').replace(/^:|:$/g, '');
+    const foundEmoji = client.emojis.cache.find(e => e.name.toLowerCase().replace(/~/g, '') === cleanName);
+    if (foundEmoji) {
+        return `<:${foundEmoji.name}:${foundEmoji.id}>`;
+    }
+    return `:${emojiName.replace(/^:|:$/g, '')}:`;
+}
+
 function getProductEmoji(name) {
     const lower = (name || '').toLowerCase();
     let emojiName = '🔹';
-    if (lower.includes('chatgpt') || lower.includes('chat gpt')) emojiName = 'ChatGPT';
+    if (lower.includes('chatgpt') || lower.includes('chat gpt') || lower.includes('gpt')) emojiName = 'ChatGPT';
     else if (lower.includes('capcut')) emojiName = 'Capcut';
     else if (lower.includes('linkedin')) emojiName = 'LinkedIn';
     else if (lower.includes('gemini')) emojiName = 'gemini~1';
@@ -205,11 +215,7 @@ function getProductEmoji(name) {
     else if (lower.includes('api')) emojiName = 'ActiveDeveloper';
     else return '🔹';
 
-    const foundEmoji = client.emojis.cache.find(e => e.name.toLowerCase() === emojiName.toLowerCase().replace('~1', ''));
-    if (foundEmoji) {
-        return `<:${foundEmoji.name}:${foundEmoji.id}>`;
-    }
-    return `:${emojiName}:`;
+    return getCustomEmoji(emojiName);
 }
 
 async function updateAvailableProductsChannel() {
@@ -534,6 +540,7 @@ client.once('clientReady', async () => {
 function getShopMainMenuEmbed(interaction) {
     db.ensureUser(interaction.user.id, interaction.user.tag);
     const user = db.getUser(interaction.user.id);
+    const verifiedEmoji = getCustomEmoji('Mine');
     
     return new EmbedBuilder()
         .setTitle('🏪 IdeaClick Store Menu')
@@ -541,7 +548,7 @@ function getShopMainMenuEmbed(interaction) {
 ✨ **Nepal's #1 Automated Digital Shop**
 
 👤 **Account Summary:**
-• Discord: <@${interaction.user.id}>
+• Discord: <@${interaction.user.id}> ${verifiedEmoji}
 • 💰 Balance: **${user.balance_npr} NPR**
 • 🏆 Loyalty Points: **${user.loyalty_points || 0} pts**
 

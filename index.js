@@ -1821,14 +1821,10 @@ Use the interactive buttons below to manage shop inventory, user accounts, and a
                 }
                 
                 log.info({ userId: interaction.user.id, product: pData.name, quantity, totalCost, pointsEarned: txResult.pointsEarned }, 'Purchase completed successfully');
-                               const safeDetails = details.length > 1000 ? (details.substring(0, 1000) + '\n... (truncated, see full message below)') : details;
-                const formattedDetails = `\`\`\`text\n${safeDetails}\n\`\`\``;
-                
-                const embed = new EmbedBuilder()
-                    .setTitle('✅ Success!')
-                    .setDescription(`Bought ${quantity}x **${pData.name}**\nCost: **${totalCost} NPR**\nRemaining Balance: **${txResult.balance_npr} NPR**\n**+${txResult.pointsEarned} Loyalty Points earned!**`)
-                    .addFields({ name: '🔑 Delivery Details', value: formattedDetails })
-                    .setColor(0x00FF00);
+                                const embed = new EmbedBuilder()
+                    .setTitle('✅ Purchase Successful!')
+                    .setDescription(`Thank you for your purchase! Bought ${quantity}x **${pData.name}**\nTotal Cost: **${totalCost} NPR**\nRemaining Balance: **${txResult.balance_npr} NPR**\n**+${txResult.pointsEarned} Loyalty Points earned!**`)
+                    .setColor(0x2ecc71);
                     
                 await sendStaffLog(
                     new EmbedBuilder()

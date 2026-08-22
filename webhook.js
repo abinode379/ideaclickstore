@@ -184,14 +184,10 @@ async function autoPurchaseProduct(discordUserId, username, productId, quantity)
         }
 
         // Send Success DM
-        const safeDetails = details.length > 1000 ? (details.substring(0, 1000) + '\n... (truncated, see full message below)') : details;
         const embed = {
             title: '✅ Auto-Purchase Successful!',
             description: `Thank you for your payment! Bought ${quantity}x **${product.name}**\nTotal Cost: **${totalCost} NPR**\nRemaining Balance: **${txResult.balance_npr} NPR**\n**+${txResult.pointsEarned} Loyalty Points earned!**`,
             color: 0x2ecc71,
-            fields: [
-                { name: '🔑 Delivery Details', value: `\`\`\`text\n${safeDetails}\n\`\`\`` }
-            ],
             timestamp: new Date().toISOString()
         };
         await sendDMWithRetry(discordUserId, embed);
